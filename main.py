@@ -15,15 +15,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- Ensure Engine Exists in Session State ---
-if 'engine' not in st.session_state:
-    try:
-        st.session_state.engine = TradingEngine()
-    except Exception as e:
-        st.error(f"Initialization Error: Please ensure you have copied `.env` and added your API keys. Error: {e}")
-        st.stop()
+# --- Ensure Engine Exists as a Global Singleton ---
+@st.cache_resource
+def get_engine():
+    return TradingEngine()
 
-engine = st.session_state.engine
+try:
+    engine = get_engine()
+except Exception as e:
+    st.error(f"Initialization Error: Please ensure you have copied `.env` and added your API keys. Error: {e}")
+    st.stop()
 
 @st.fragment(run_every="4s")
 def render_sidebar_metrics():
