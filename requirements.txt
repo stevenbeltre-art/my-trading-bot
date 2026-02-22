@@ -1,8 +1,8 @@
-ccxt==4.4.45
-pandas-ta==0.3.14b0
-google-generativeai==0.8.3
-streamlit==1.41.1
-feedparser==6.0.11
-pandas==2.2.3
-python-dotenv==1.0.1
+ccxt
+ta
+google-generativeai
+streamlit
+feedparser
+pandas
+python-dotenv
 plotly
