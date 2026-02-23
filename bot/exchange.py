@@ -6,6 +6,7 @@ from alpaca.data.historical.stock import StockHistoricalDataClient
 from alpaca.data.historical.crypto import CryptoHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+from alpaca.data.enums import DataFeed
 
 import time
 import threading
@@ -44,7 +45,7 @@ class ExchangeInterface:
                 return {'last': latest[symbol].price}
             else:
                 # Using latest trades for stock
-                req = alpaca.data.requests.StockTradesRequest(symbol_or_symbols=symbol)
+                req = alpaca.data.requests.StockTradesRequest(symbol_or_symbols=symbol, feed=DataFeed.IEX)
                 latest = self.stock_data_client.get_stock_latest_trade(req)
                 return {'last': latest[symbol].price}
 
@@ -72,7 +73,8 @@ class ExchangeInterface:
                     symbol_or_symbols=symbol,
                     timeframe=tf_obj,
                     start=start_dt,
-                    end=end_dt
+                    end=end_dt,
+                    feed=DataFeed.IEX
                 )
                 bars = self.stock_data_client.get_stock_bars(request_params).df
 
