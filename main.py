@@ -83,7 +83,7 @@ def render_dashboard_metrics():
                 metrics = engine.strategy.metrics.get(sym, {})
                 grid_data.append({
                     "Asset": sym,
-                    "RSI (15m)": round(metrics.get('rsi', 0.0), 2) if metrics.get('rsi') else "N/A",
+                    "RSI (15m)": str(round(metrics.get('rsi', 0.0), 2)) if metrics.get('rsi') else "N/A",
                     "MACD (15m)": metrics.get('tech_signal', 'WAITING'),
                     "Macro Trend (4H)": metrics.get('macro_trend', 'WAITING'),
                     "Sentiment": metrics.get('sentiment', 'WAITING'),
