@@ -1,7 +1,7 @@
 from typing import Dict, Any
 
 class RiskManager:
-    def __init__(self, trailing_sl_pct: float = 0.02, tp_pct: float = 0.05, max_risk_pct: float = 0.05):
+    def __init__(self, trailing_sl_pct: float = 0.04, tp_pct: float = 0.08, max_risk_pct: float = 0.05):
         self.trailing_sl_pct = trailing_sl_pct
         self.tp_pct = tp_pct
         self.max_risk_pct = max_risk_pct
