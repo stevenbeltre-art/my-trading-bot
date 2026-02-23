@@ -91,9 +91,10 @@ class TradingEngine:
                         
                     try:
                         self.db.log_message("DEBUG", f"Evaluating {symbol}")
-                        # 1. Fetch current price and data
+                        # 1. Fetch current price and dual-timeframe data
                         self.db.log_message("DEBUG", f"{symbol}: Fetching OHLCV...")
-                        ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe='15m', limit=100)
+                        ohlcv_15m = self.exchange.fetch_ohlcv(symbol, timeframe='15m', limit=100)
+                        ohlcv_4h = self.exchange.fetch_ohlcv(symbol, timeframe='4h', limit=100)
                         self.db.log_message("DEBUG", f"{symbol}: OHLCV fetched. Fetching Ticker...")
                         try:
                             ticker = self.exchange.fetch_ticker(symbol)
@@ -103,69 +104,53 @@ class TradingEngine:
                             self.db.log_message("WARNING", f"Could not fetch ticker for {symbol}: {e}")
                             continue # Skip to next coin
         
-                        # 2. Check Open Position
+                        # 2. Check Open Position Status Natively
+                        base_currency = symbol.split('/')[0]
+                        coin_balance = balance_info.get(base_currency, {}).get('total', 0.0)
+                        
                         if self.open_positions[symbol]:
-                            pos = self.open_positions[symbol]
-                            entry_price = pos['entry_price']
-                            amount = pos['amount']
-                            highest_price = max(pos['highest_price'], current_price)
-                            pos['highest_price'] = highest_price
-        
-                            trailing_stop = self.risk_manager.calculate_trailing_stop(entry_price, highest_price)
-                            
-                            sell_reason = None
-                            if self.risk_manager.check_take_profit(entry_price, current_price):
-                                sell_reason = "Take Profit Hit"
-                            elif self.risk_manager.check_stop_loss(current_price, trailing_stop):
-                                sell_reason = "Trailing Stop Loss Hit"
-
-                            if sell_reason:
-                                self.db.log_message("INFO", f"{symbol} - {sell_reason} at {current_price}. Executing SELL.")
-                                try:
-                                    order = self.exchange.create_market_sell_order(symbol, amount)
-                                    cost = order.get('cost')
-                                    if cost is None:
-                                        cost = current_price * amount
-                                except Exception as e:
-                                    self.db.log_message("WARNING", f"{symbol} Sell failed, sim: {e}")
-                                    cost = current_price * amount
-                                    
-                                pnl = cost - (entry_price * amount)
-                                self.db.update_trade_pnl(pos['id'], pnl, "CLOSED")
-                                # Explicitly record the SELL side of the transaction for the UI history
-                                self.db.log_trade(symbol, "SELL", current_price, amount, cost, "CLOSED")
+                            # If we marked it open, check if Alpaca natively closed it (hit SL/TP)
+                            if coin_balance <= 0.00001:
+                                self.db.log_message("INFO", f"{symbol} Position closed natively by Alpaca Bracket Order.")
+                                # Assuming native close, update database. (Real PnL sync requires order query, marking 0 for simplicity here)
+                                self.db.update_trade_pnl(self.open_positions[symbol]['id'], 0, "CLOSED_NATIVELY")
                                 self.open_positions[symbol] = None
-        
+                            else:
+                                pass # Still open, let Alpaca's robust OCO engine handle it on their servers.
+                                
                         # 3. Look for new Entry
-                        else:
-                            action = self.strategy.determine_trade_action(ohlcv, symbol)
+                        elif coin_balance <= 0.00001: 
+                            action = self.strategy.determine_trade_action(ohlcv_15m, ohlcv_4h, symbol)
                             
                             if action == "BUY":
                                 self.db.log_message("INFO", f"{symbol} Strategy signal: BUY.")
                                 quote_currency = symbol.split('/')[1]
                                 available_balance = balance_info.get(quote_currency, {}).get('free', 10000.0)
                                 
-                                amount_to_buy = self.risk_manager.calculate_position_size(available_balance, current_price)
+                                params = self.risk_manager.calculate_trade_parameters(available_balance, current_price, ohlcv_15m)
+                                amount_to_buy = params['amount']
+                                sl_price = params['sl_price']
+                                tp_price = params['tp_price']
                                 
-                                try:
-                                    self.db.log_message("INFO", f"Executing BUY for {amount_to_buy} {symbol} at {current_price}")
-                                    order = self.exchange.create_market_buy_order(symbol, amount_to_buy)
-                                    cost = order.get('cost')
-                                    if cost is None:
+                                if amount_to_buy > 0:
+                                    try:
+                                        self.db.log_message("INFO", f"Executing BRACKET BUY for {amount_to_buy} {symbol} at {current_price} | SL: {sl_price} | TP: {tp_price}")
+                                        order = self.exchange.create_bracket_buy_order(symbol, amount_to_buy, sl_price, tp_price)
+                                        cost = order.get('cost')
+                                        if cost is None:
+                                            cost = current_price * amount_to_buy
+                                    except Exception as e:
+                                        self.db.log_message("WARNING", f"{symbol} Buy failed, sim: {e}")
                                         cost = current_price * amount_to_buy
-                                except Exception as e:
-                                    self.db.log_message("WARNING", f"{symbol} Buy failed, sim: {e}")
-                                    cost = current_price * amount_to_buy
-                                    amount_to_buy = cost / current_price
+                                        amount_to_buy = cost / current_price
+                                        
+                                    trade_id = self.db.log_trade(symbol, "BUY", current_price, amount_to_buy, cost, "OPEN")
                                     
-                                trade_id = self.db.log_trade(symbol, "BUY", current_price, amount_to_buy, cost, "OPEN")
-                                
-                                self.open_positions[symbol] = {
-                                    "id": trade_id,
-                                    "entry_price": current_price,
-                                    "highest_price": current_price,
-                                    "amount": amount_to_buy
-                                }
+                                    self.open_positions[symbol] = {
+                                        "id": trade_id,
+                                        "entry_price": current_price,
+                                        "amount": amount_to_buy
+                                    }
                                 
                     except Exception as e:
                         self.db.log_message("ERROR", f"Error evaluating {symbol}: {e}")

@@ -91,12 +91,23 @@ def render_dashboard_metrics():
             macd_val = metrics.get('macd', 0.0)
             sentiment = metrics.get('sentiment', 'WAITING')
             tech_sig = metrics.get('tech_signal', 'NEUTRAL')
+            macro_trend = metrics.get('macro_trend', 'WAITING')
+            rejection_reason = metrics.get('rejection_reason', 'Monitoring...')
             
             col_m1.metric("Current RSI", f"{rsi_val:.2f}", delta=tech_sig, delta_color="normal")
-            col_m2.metric("Current MACD", f"{macd_val:.4f}")
+            col_m2.metric("4H Macro Trend", macro_trend)
             col_m3.metric("AI Sentiment News", sentiment)
+            
+            if rejection_reason != "Monitoring..." and rejection_reason != "Signal Approved":
+                st.warning(f"**Execution Status:** {rejection_reason}")
+            elif rejection_reason == "Signal Approved":
+                st.success(f"**Execution Status:** {rejection_reason}")
+            else:
+                st.info(f"**Execution Status:** {rejection_reason}")
         else:
             col_m1.info("Start bot to see metrics")
+            col_m2.info("Start bot to see metrics")
+            col_m3.info("Start bot to see metrics")
             col_m2.info("Start bot to see metrics")
             col_m3.info("Start bot to see metrics")
         
