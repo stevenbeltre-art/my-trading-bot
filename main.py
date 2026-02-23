@@ -38,8 +38,8 @@ def render_sidebar_metrics():
 with st.sidebar:
     st.title("⚙️ Bot Controls")
     
-    st.write(f"**Tracking**: {len(engine.symbols)} Coins")
-    st.write(f"**Exchange**: {engine.exchange_id.title()} Crypto Sandbox")
+    st.write(f"**Tracking**: {len(engine.symbols)} Assets")
+    st.write(f"**Exchange**: Alpaca High-Volume Universe (Paper Trading)")
     
     st.markdown("---")
     view_symbol = st.selectbox("View Coin Details", ["ALL"] + engine.symbols)
