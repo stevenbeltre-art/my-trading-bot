@@ -23,7 +23,7 @@ class TradingEngine:
 
         try:
             self.exchange = ExchangeInterface(self.exchange_api_key, self.exchange_secret)
-            self.strategy = StrategyEngine(self.gemini_api_key)
+            self.strategy = StrategyEngine(self.gemini_api_key, self.exchange_api_key, self.exchange_secret)
             self.risk_manager = RiskManager(atr_sl_multiplier=4.0) # Wider Stop Loss Parameter
         except Exception as e:
             self.db.log_message("ERROR", f"Failed to initialize components: {e}")

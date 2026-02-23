@@ -16,7 +16,6 @@ charset-normalizer==3.4.4
 click==8.1.8
 coincurve==21.0.0
 cryptography==46.0.5
-feedparser==6.0.12
 frozenlist==1.8.0
 gitdb==4.0.12
 GitPython==3.1.46

@@ -1,16 +1,20 @@
 import pandas as pd
 import ta
 import google.generativeai as genai
-import feedparser
+from alpaca.data.historical import NewsClient
+from alpaca.data.requests import NewsRequest
 from typing import Dict, Any
 
 class StrategyEngine:
-    def __init__(self, gemini_api_key: str):
+    def __init__(self, gemini_api_key: str, alpaca_api_key: str, alpaca_secret_key: str):
         self.gemini_api_key = gemini_api_key
         # Configure Gemini 
         genai.configure(api_key=self.gemini_api_key)
         # Using the specified Gemini 1.5 Flash model
         self.model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Alpaca News Client for Multi-Asset tracking
+        self.news_client = NewsClient(alpaca_api_key, alpaca_secret_key)
         
         # State to share with the UI, mapping symbol -> metrics dict
         self.metrics = {}
@@ -66,22 +70,29 @@ class StrategyEngine:
             "macro": macro_trend
         }
 
-    def fetch_recent_news(self) -> str:
+    def fetch_recent_news(self, symbol: str) -> str:
         """
-        Fetches the 5 most recent headlines from CoinDesk RSS feed.
+        Fetches the 5 most recent headlines using Alpaca NewsClient.
         """
-        # Using a reliable RSS feed per requirements
-        feed_url = "https://www.coindesk.com/arc/outboundfeeds/rss/"
-        feed = feedparser.parse(feed_url)
-        
-        headlines = []
-        for entry in feed.entries[:5]: # Get top 5
-            headlines.append(entry.title)
+        try:
+            # Alpaca expects the base symbol, e.g. "BTC" or "AAPL"
+            query_symbol = symbol.split('/')[0] if "/" in symbol else symbol
             
-        if not headlines:
+            request_params = NewsRequest(
+                symbols=query_symbol,
+                limit=5
+            )
+            news = self.news_client.get_news(request_params)
+            
+            headlines = [article.headline for article in news.news]
+            
+            if not headlines:
+                return f"No recent news found for {query_symbol}."
+                
+            return "\n".join(headlines)
+        except Exception as e:
+            print(f"Error fetching news for {symbol}: {e}")
             return "No recent news found."
-            
-        return "\n".join(headlines)
 
     def analyze_sentiment(self, headlines: str) -> str:
         """
@@ -139,7 +150,7 @@ class StrategyEngine:
                 return "HOLD"
                 
             # 2. Sentiment Directional Filter
-            headlines = self.fetch_recent_news()
+            headlines = self.fetch_recent_news(symbol)
             sentiment_signal = self.analyze_sentiment(headlines)
             self.metrics[symbol]['sentiment'] = sentiment_signal
             
