@@ -74,12 +74,28 @@ def render_dashboard_metrics():
     
     # 1. Overview Section
     if view_symbol == "ALL":
-        st.subheader("Live Strategy Metrics: Portfolio Overview")
-        col_m1, col_m2, col_m3 = st.columns(3)
-        open_positions = len([p for p in engine.open_positions.values() if p is not None])
-        col_m1.metric("Active Trades", f"{open_positions} / {len(engine.symbols)}")
-        col_m2.metric("Tracked Markets", len(engine.symbols))
-        col_m3.metric("System Status", "🟢 EVALUATING" if engine.is_running else "🔴 STANDBY")
+        st.subheader("Live Strategy Metrics: High-Volume Universe")
+        
+        # Build Portfolio Grid
+        if engine.is_running and hasattr(engine.strategy, 'metrics'):
+            grid_data = []
+            for sym in engine.symbols:
+                metrics = engine.strategy.metrics.get(sym, {})
+                grid_data.append({
+                    "Asset": sym,
+                    "RSI (15m)": round(metrics.get('rsi', 0.0), 2) if metrics.get('rsi') else "N/A",
+                    "MACD (15m)": metrics.get('tech_signal', 'WAITING'),
+                    "Macro Trend (4H)": metrics.get('macro_trend', 'WAITING'),
+                    "Sentiment": metrics.get('sentiment', 'WAITING'),
+                    "Execution Status": metrics.get('rejection_reason', 'Monitoring...')
+                })
+            
+            df_grid = pd.DataFrame(grid_data)
+            # Use Streamlit's native dataframe displaying with hiding index
+            st.dataframe(df_grid, use_container_width=True, hide_index=True)
+            
+        else:
+            st.info("Start bot to populate live portfolio metrics grid.")
     else:
         st.subheader(f"Live Strategy Metrics: {view_symbol}")
         col_m1, col_m2, col_m3 = st.columns(3)

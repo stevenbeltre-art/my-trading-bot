@@ -147,7 +147,7 @@ class StrategyEngine:
                 self.metrics[symbol]['rejection_reason'] = "Blocked: News Sentiment Bearish"
                 return "HOLD"
                 
-            # If we pass all filters
+            # If we pass all filters (BULLISH or NEUTRAL sentiment allows the technical setup to fire)
             self.metrics[symbol]['rejection_reason'] = "Signal Approved"
             return "BUY"
             

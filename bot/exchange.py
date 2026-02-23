@@ -1,53 +1,139 @@
-import ccxt
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest, TakeProfitRequest, StopLossRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
+
+from alpaca.data.historical.stock import StockHistoricalDataClient
+from alpaca.data.historical.crypto import CryptoHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+
 import time
 import threading
 from typing import Dict, Any, Optional
-import os
+from datetime import datetime, timedelta
 
 class ExchangeInterface:
-    def __init__(self, exchange_id: str, api_key: str, secret: str):
-        self.exchange_id = exchange_id
+    def __init__(self, api_key: str, secret: str):
         self.lock = threading.Lock()
         
-        # Initialize the CCXT exchange class instance based on the string id
-        exchange_class = getattr(ccxt, self.exchange_id)
+        # 1. Trading Client (Executes orders and fetches account balances)
+        self.trading_client = TradingClient(api_key, secret, paper=True)
         
-        self.exchange = exchange_class({
-            'apiKey': api_key,
-            'secret': secret,
-            'enableRateLimit': False, # Disabled due to Alpaca/CCXT hanging bug. Engine uses time.sleep().
-        })
+        # 2. Historical Data Clients (Fetches OHLCV and Tickers)
+        self.stock_data_client = StockHistoricalDataClient(api_key, secret)
+        self.crypto_data_client = CryptoHistoricalDataClient(api_key, secret)
         
-        # EXPLICIT SANDBOX MODE: Guarantee it connects to the testnet/paper trading environment
-        self.exchange.set_sandbox_mode(True)
-        
-    def fetch_ticker(self, symbol: str) -> Dict[str, Any]:
-        """Fetch current ticker information."""
-        with self.lock:
-            return self.exchange.fetch_ticker(symbol)
+    def _is_crypto(self, symbol: str) -> bool:
+        """Helper to determine data client routing."""
+        return "/" in symbol or "USD" in symbol
 
-    def fetch_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 100) -> list:
-        """Fetch OHLCV candlestick data."""
+    def _get_timeframe_obj(self, timeframe_str: str) -> TimeFrame:
+        if timeframe_str == '15m':
+            return TimeFrame(15, TimeFrameUnit.Minute)
+        elif timeframe_str == '4h':
+            return TimeFrame(4, TimeFrameUnit.Hour)
+        return TimeFrame(1, TimeFrameUnit.Hour)
+
+    def fetch_ticker(self, symbol: str) -> Dict[str, float]:
+        """Fetch latest trade price."""
         with self.lock:
-            return self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            if self._is_crypto(symbol):
+                # Using latest trades for crypto
+                req = alpaca.data.requests.CryptoTradesRequest(symbol_or_symbols=symbol)
+                latest = self.crypto_data_client.get_crypto_latest_trade(req)
+                return {'last': latest[symbol].price}
+            else:
+                # Using latest trades for stock
+                req = alpaca.data.requests.StockTradesRequest(symbol_or_symbols=symbol)
+                latest = self.stock_data_client.get_stock_latest_trade(req)
+                return {'last': latest[symbol].price}
+
+    def fetch_ohlcv(self, symbol: str, timeframe: str = '15m', limit: int = 100) -> list:
+        """Fetch OHLCV returning a standardized CCXT-like array for backward-compatibility."""
+        with self.lock:
+            end_dt = datetime.utcnow()
+            
+            # Calculate a generic start time that covers the limit requirements
+            hours_offset = 24 * limit if timeframe == '4h' else (limit // 4) * 24 
+            start_dt = end_dt - timedelta(hours=hours_offset)
+            
+            tf_obj = self._get_timeframe_obj(timeframe)
+            
+            if self._is_crypto(symbol):
+                request_params = CryptoBarsRequest(
+                    symbol_or_symbols=symbol,
+                    timeframe=tf_obj,
+                    start=start_dt,
+                    end=end_dt
+                )
+                bars = self.crypto_data_client.get_crypto_bars(request_params).df
+            else:
+                request_params = StockBarsRequest(
+                    symbol_or_symbols=symbol,
+                    timeframe=tf_obj,
+                    start=start_dt,
+                    end=end_dt
+                )
+                bars = self.stock_data_client.get_stock_bars(request_params).df
+
+            # Ensure data isn't empty
+            if bars.empty:
+                return []
+
+            # Clean the dataframe back to the CCXT array format [timestamp, O, H, L, C, V]
+            # Alpaca multi-index dataframe needs resetting
+            bars = bars.reset_index()
+            # Standardize column naming just in case
+            bars = bars[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+            
+            # Convert timestamp back to standard python epoch milliseconds
+            bars['timestamp'] = bars['timestamp'].astype('int64') // 10**6 
+            
+            # Return as array of arrays (CCXT format style, slicing to specific limit)
+            ohlcv_list = bars.values.tolist()
+            return ohlcv_list[-limit:]
 
     def fetch_balance(self) -> Dict[str, Any]:
-        """Fetch account balance. Mocks it if using generic keys."""
+        """Fetch account balance natively from Alpaca."""
         with self.lock:
             try:
-                return self.exchange.fetch_balance()
+                account = self.trading_client.get_account()
+                # Return standard dict format to avoid breaking engine.py logic
+                return {'USD': {'free': float(account.cash), 'total': float(account.equity)}}
             except Exception as e:
-                # If the user hasn't set real API keys, provide a mock paper trading balance
                 print(f"Auth error (using mock balance): {e}")
-                return {'USD': {'free': 10000.0}}
+                return {'USD': {'free': 10000.0, 'total': 10000.0}}
 
-    def create_market_buy_order(self, symbol: str, amount: float) -> Dict[str, Any]:
-        """Execute a market buy order."""
+    def fetch_positions(self) -> list:
+        """Fetch active positions natively."""
         with self.lock:
-            return self.exchange.create_market_buy_order(symbol, amount)
+            try:
+                return self.trading_client.get_all_positions()
+            except Exception:
+                return []
 
-    def create_market_sell_order(self, symbol: str, amount: float) -> Dict[str, Any]:
-        """Execute a market sell order."""
+    def create_bracket_buy_order(self, symbol: str, amount: float, sl_price: float, tp_price: float) -> Dict[str, Any]:
+        """Execute a market buy order with attached Stop-Loss and Take-Profit strings via Alpaca-py."""
         with self.lock:
-            return self.exchange.create_market_sell_order(symbol, amount)
+            try:
+                # Alpaca expects specific base-pairs, e.g., 'BTC/USD'
+                
+                market_order_data = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=amount,
+                    side=OrderSide.BUY,
+                    time_in_force=TimeInForce.GTC,
+                    take_profit=TakeProfitRequest(limit_price=round(tp_price, 2)),
+                    stop_loss=StopLossRequest(stop_price=round(sl_price, 2))
+                )
+                
+                order = self.trading_client.submit_order(order_data=market_order_data)
+                
+                # Format to look like CCXT for downstream compatibility
+                return {
+                    'id': str(order.id),
+                    'cost': float(order.notional) if order.notional else (float(order.qty) * float(order.filled_avg_price) if order.filled_avg_price else None)
+                }
+            except Exception as e:
+                raise Exception(f"Alpaca Order Failed: {e}")
 

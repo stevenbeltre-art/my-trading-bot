@@ -1,38 +1,48 @@
+import pandas as pd
+import ta
 from typing import Dict, Any
 
 class RiskManager:
-    def __init__(self, trailing_sl_pct: float = 0.04, tp_pct: float = 0.08, max_risk_pct: float = 0.05):
-        self.trailing_sl_pct = trailing_sl_pct
-        self.tp_pct = tp_pct
-        self.max_risk_pct = max_risk_pct
+    def __init__(self, risk_per_trade_pct: float = 0.02, atr_sl_multiplier: float = 2.0, rr_ratio: float = 2.0):
+        self.risk_per_trade_pct = risk_per_trade_pct
+        self.atr_sl_multiplier = atr_sl_multiplier
+        self.rr_ratio = rr_ratio
 
-    def calculate_position_size(self, balance: float, current_price: float) -> float:
-        """
-        Calculates position size never risking more than max_risk_pct of total account.
-        """
-        # Simplified position sizing based on available balance and max risk
-        risk_capital = balance * self.max_risk_pct
-        # Assuming we can buy fractional amounts
-        amount_to_buy = risk_capital / current_price
-        return amount_to_buy
+    def calculate_atr(self, df: pd.DataFrame, window: int = 14) -> float:
+        """Calculates the Average True Range (ATR) to measure current market volatility."""
+        if len(df) < window:
+            return 0.0
+        atr_indicator = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=window)
+        return atr_indicator.average_true_range().iloc[-1]
 
-    def check_take_profit(self, entry_price: float, current_price: float) -> bool:
+    def calculate_trade_parameters(self, balance: float, current_price: float, ohlcv: list) -> Dict[str, float]:
         """
-        Checks if the current price hit the 5% take-profit target.
+        Calculates position size and bracket logic based on ATR volatility.
+        Ensures the portfolio only loses `risk_per_trade_pct` if the stop loss is hit.
         """
-        target_price = entry_price * (1 + self.tp_pct)
-        return current_price >= target_price
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
+        atr = self.calculate_atr(df)
+        if atr == 0.0:
+            return {"amount": 0.0, "sl_price": 0.0, "tp_price": 0.0}
 
-    def calculate_trailing_stop(self, entry_price: float, highest_price: float) -> float:
-        """
-        Calculates the 2% trailing stop-loss price.
-        """
-        # The stop loss moves up with the highest price reached
-        # If highest price is still entry price, then SL is 2% below entry
-        return highest_price * (1 - self.trailing_sl_pct)
+        # 1. Calculate Stop Loss Price (Trailing below entry based on volatility)
+        sl_distance = atr * self.atr_sl_multiplier
+        sl_price = current_price - sl_distance
+        
+        # 2. Calculate Take Profit Price (Risk/Reward Ratio)
+        tp_distance = sl_distance * self.rr_ratio
+        tp_price = current_price + tp_distance
 
-    def check_stop_loss(self, current_price: float, trailing_stop_price: float) -> bool:
-        """
-        Checks if current price hit the trailing stop-loss.
-        """
-        return current_price <= trailing_stop_price
+        # 3. Calculate Volatility-Adjusted Position Size
+        # If we hit SL, we lose strictly (balance * 0.02) dollars.
+        risk_capital_dollars = balance * self.risk_per_trade_pct
+        
+        # How many units can we buy so that a drop of `sl_distance` equals `risk_capital_dollars`?
+        amount_to_buy = risk_capital_dollars / sl_distance
+
+        return {
+            "amount": amount_to_buy,
+            "sl_price": sl_price,
+            "tp_price": tp_price
+        }
