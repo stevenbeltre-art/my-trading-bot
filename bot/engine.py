@@ -150,15 +150,16 @@ class TradingEngine:
                             action = self.strategy.determine_trade_action(ohlcv_15m, ohlcv_4h, symbol)
                             
                             if action in ["BUY", "SELL"]:
-                                self.db.log_message("INFO", f"{symbol} Strategy signal: {action}.")
-                                
                                 # Available fiat cash to trade with (Alpaca handles everything in USD natively)
                                 available_balance = balance_info.get('USD', {}).get('free', 10000.0)
                                 
                                 # Prevent making dust/micro trades if account is already fully deployed
                                 if available_balance < 10.0:
-                                    self.db.log_message("WARNING", f"{symbol}: Insufficient free cash ({available_balance}) for meaningful trade. Skipping.")
+                                    # Silently update the UI matrix instead of spamming warning logs
+                                    self.strategy.metrics[symbol]['rejection_reason'] = "Blocked: Insufficient Cash"
                                     continue
+                                    
+                                self.db.log_message("INFO", f"{symbol} Strategy signal: {action}.")
                                 
                                 params = self.risk_manager.calculate_trade_parameters(available_balance, current_price, ohlcv_15m, direction=action)
                                 amount = params['amount']
