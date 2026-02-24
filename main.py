@@ -351,7 +351,7 @@ def render_dashboard_metrics():
         trades = engine.db.get_recent_trades(10)
         if trades:
             df_trades = pd.DataFrame(trades)
-            df_trades['timestamp'] = pd.to_datetime(df_trades['timestamp'])
+            df_trades['timestamp'] = pd.to_datetime(df_trades['timestamp'], utc=True).dt.tz_convert('America/New_York').dt.strftime('%m-%d %H:%M:%S')
             df_trades['cost'] = df_trades['cost'].fillna(0.0) 
             st.dataframe(df_trades, width='stretch', hide_index=True)
         else:
@@ -369,7 +369,9 @@ def render_dashboard_metrics():
             log_messages = []
             for log in logs:
                 color = "#00E676" if log['level'] == "INFO" else "#FF1744" if log['level'] == "ERROR" else "#888888"
-                time_str = log['timestamp'].split('.')[0] if '.' in log['timestamp'] else log['timestamp']
+                # Convert UTC timestamp string to localized NY time
+                local_time = pd.to_datetime(log['timestamp'], utc=True).tz_convert('America/New_York')
+                time_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
                 log_messages.append(f"<span style='color:{color}'>[{time_str}]</span> {log['message']}")
             
             st.markdown(
@@ -385,3 +387,4 @@ try:
     render_dashboard_metrics()
 except Exception as e:
     st.error(f"UI Loading Error: {e}")
+
