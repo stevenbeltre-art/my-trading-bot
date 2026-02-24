@@ -351,7 +351,7 @@ def render_dashboard_metrics():
         trades = engine.db.get_recent_trades(10)
         if trades:
             df_trades = pd.DataFrame(trades)
-            df_trades['timestamp'] = pd.to_datetime(df_trades['timestamp'], utc=True).dt.tz_convert('America/New_York').dt.strftime('%m-%d %H:%M:%S')
+            df_trades['timestamp'] = pd.to_datetime(df_trades['timestamp'], utc=True).dt.tz_convert('America/New_York').dt.strftime('%m-%d %I:%M:%S %p')
             df_trades['cost'] = df_trades['cost'].fillna(0.0) 
             st.dataframe(df_trades, width='stretch', hide_index=True)
         else:
@@ -371,12 +371,12 @@ def render_dashboard_metrics():
                 color = "#00E676" if log['level'] == "INFO" else "#FF1744" if log['level'] == "ERROR" else "#888888"
                 # Convert UTC timestamp string to localized NY time
                 local_time = pd.to_datetime(log['timestamp'], utc=True).tz_convert('America/New_York')
-                time_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
-                log_messages.append(f"<div><span style='color:{color}'>[{time_str}]</span> {log['message']}</div>")
+                time_str = local_time.strftime('%Y-%m-%d %I:%M:%S %p')
+                log_messages.append(f"<span style='color:{color}'>[{time_str}]</span> {log['message']}")
             
             st.markdown(
-                f"<div style='display:flex; flex-direction:column-reverse; background:rgba(15,15,18,0.8); padding:15px; border-radius:12px; font-family:\"Roboto Mono\", monospace; font-size:12px; height:350px; overflow-y:auto; border:1px solid rgba(255,255,255,0.05);'>"
-                + "".join(log_messages) + "</div>",
+                f"<div style='background:rgba(15,15,18,0.8); padding:15px; border-radius:12px; font-family:\"Roboto Mono\", monospace; font-size:12px; height:350px; overflow-y:auto; border:1px solid rgba(255,255,255,0.05);'>"
+                + "<br>".join(log_messages) + "</div>",
                 unsafe_allow_html=True
             )
         else:
