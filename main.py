@@ -168,33 +168,43 @@ with st.sidebar:
 # --- Top Bar / Header Area ---
 st.markdown("## 📊 TERMINAL OVERVIEW")
 
-col_bal, col_eq, col_pnl, col_kill = st.columns([1, 1, 1, 1])
-
-with col_bal:
+@st.fragment(run_every="2s")
+def render_terminal_metrics():
+    col_bal, col_eq, col_pnl, col_kill = st.columns([1, 1, 1, 1])
+    
     try:
         balance_info = engine.exchange.fetch_balance()
-        available_balance = balance_info.get("USD", {}).get('free', 0.0)
-        st.metric(label="AVAILABLE BALANCE", value=f"${available_balance:,.2f}")
+        avail = balance_info.get("USD", {}).get('free', 0.0)
+        total = balance_info.get("USD", {}).get('total', 0.0)
     except:
-        st.metric(label="AVAILABLE BALANCE", value="Syncing...")
+        avail, total = 0.0, 0.0
 
-with col_eq:
-    st.metric(label="TOTAL EQUITY", value="WAITING") # Placeholder for broader portfolio logic
+    with col_bal:
+        st.metric(label="AVAILABLE BALANCE", value=f"${avail:,.2f}" if avail else "Syncing...")
 
-with col_pnl:
-    total_trades = 0
-    with engine.db._get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM trades")
-        res = cursor.fetchone()
-        if res: total_trades = res[0]
-    st.metric(label="LIFETIME EXECUTIONS", value=str(total_trades))
+    with col_eq:
+        st.metric(label="TOTAL EQUITY", value=f"${total:,.2f}" if total else "WAITING")
 
-with col_kill:
-    st.write("") # Vertical padding
-    if st.button("🛑 KILL SWITCH", width='stretch', disabled=not engine.is_running, type="primary"):
-        engine.stop()
-        st.rerun()
+    with col_pnl:
+        total_trades = 0
+        try:
+            with engine.db._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM trades")
+                res = cursor.fetchone()
+                if res: total_trades = res[0]
+        except:
+            pass
+        st.metric(label="LIFETIME EXECUTIONS", value=str(total_trades))
+
+    with col_kill:
+        st.write("") # Vertical padding
+        if st.button("🛑 KILL SWITCH", width='stretch', disabled=not engine.is_running, type="primary"):
+            engine.stop()
+            st.rerun()
+
+# Render the dynamic header
+render_terminal_metrics()
 
 st.markdown("---")
 
