@@ -3,7 +3,7 @@ import ta
 from typing import Dict, Any
 
 class RiskManager:
-    def __init__(self, risk_per_trade_pct: float = 0.02, atr_sl_multiplier: float = 2.0, rr_ratio: float = 2.0):
+    def __init__(self, risk_per_trade_pct: float = 0.10, atr_sl_multiplier: float = 1.5, rr_ratio: float = 1.5):
         self.risk_per_trade_pct = risk_per_trade_pct
         self.atr_sl_multiplier = atr_sl_multiplier
         self.rr_ratio = rr_ratio

@@ -49,9 +49,9 @@ class StrategyEngine:
         # Macro Trend logic: Positive Histogram = Bullish Macro
         macro_trend = "BULLISH" if macro_hist > 0 else "BEARISH"
 
-        # Signal logic: Oversold RSI + MACD crossover
+        # Signal logic: Momentum Gathering (RSI < 55) + MACD crossover
         tech_signal = "NEUTRAL"
-        if rsi_val < 35 and macd_val > macd_signal: 
+        if rsi_val < 55 and macd_val > macd_signal: 
             tech_signal = "BULLISH"
         elif rsi_val > 65 and macd_val < macd_signal: 
             tech_signal = "BEARISH"
@@ -144,21 +144,17 @@ class StrategyEngine:
         self.metrics[symbol]['rejection_reason'] = "Monitoring..."
             
         if tech_signal == "BULLISH":
-            # 1. Macro Trend Filter
-            if macro_trend == "BEARISH":
-                self.metrics[symbol]['rejection_reason'] = "Blocked: 4H MACD Bearish"
-                return "HOLD"
-                
             # 2. Sentiment Directional Filter
             headlines = self.fetch_recent_news(symbol)
             sentiment_signal = self.analyze_sentiment(headlines)
             self.metrics[symbol]['sentiment'] = sentiment_signal
             
-            if sentiment_signal == "BEARISH":
-                self.metrics[symbol]['rejection_reason'] = "Blocked: News Sentiment Bearish"
+            # 1. Aggressive Macro Filter (Only block if BOTH Macro AND Sentiment are Bearish)
+            if macro_trend == "BEARISH" and sentiment_signal == "BEARISH":
+                self.metrics[symbol]['rejection_reason'] = "Blocked: 4H Macro & News Bearish"
                 return "HOLD"
                 
-            # If we pass all filters (BULLISH or NEUTRAL sentiment allows the technical setup to fire)
+            # If we pass all filters
             self.metrics[symbol]['rejection_reason'] = "Signal Approved"
             return "BUY"
             
