@@ -27,7 +27,8 @@ st.markdown(
     
     /* Restore Material Icons that were overwritten by the global font */
     .material-symbols-rounded, 
-    button.st-emotion-cache-1aplgmp span span {
+    [data-testid="collapsedControl"] span,
+    [data-testid="stSidebarCollapseButton"] span {
         font-family: 'Material Symbols Rounded' !important;
         font-weight: normal !important;
         font-size: 24px !important;
