@@ -152,6 +152,11 @@ class TradingEngine:
                                 quote_currency = symbol.split('/')[1]
                                 available_balance = balance_info.get(quote_currency, {}).get('free', 10000.0)
                                 
+                                # Prevent making dust/micro trades if account is already fully deployed
+                                if available_balance < 10.0:
+                                    self.db.log_message("WARNING", f"{symbol}: Insufficient free cash ({available_balance}) for meaningful trade. Skipping.")
+                                    continue
+                                
                                 params = self.risk_manager.calculate_trade_parameters(available_balance, current_price, ohlcv_15m)
                                 amount_to_buy = params['amount']
                                 sl_price = params['sl_price']
