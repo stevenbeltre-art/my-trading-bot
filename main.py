@@ -28,10 +28,16 @@ st.markdown(
     /* Restore Material Icons that were overwritten by the global font */
     .material-symbols-rounded, 
     [data-testid="collapsedControl"] span,
-    [data-testid="stSidebarCollapseButton"] span {
+    [data-testid="stSidebarCollapseButton"] span,
+    [data-testid="stHeader"] span {
         font-family: 'Material Symbols Rounded' !important;
         font-weight: normal !important;
         font-size: 24px !important;
+    }
+    
+    /* Make the persistent Streamlit Header invisible to blend into Dark Mode */
+    [data-testid="stHeader"] {
+        background: rgba(0,0,0,0) !important;
     }
     
     /* Sleek Dark Mode Background */
@@ -42,7 +48,7 @@ st.markdown(
     
     /* Push main content block down to clear the absolute-positioned sidebar toggle */
     .block-container {
-        padding-top: 3rem !important;
+        padding-top: 4rem !important;
     }
     
     /* Glassmorphism for containers and sidebar */
