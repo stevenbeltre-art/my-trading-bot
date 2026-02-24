@@ -163,16 +163,15 @@ class TradingEngine:
                                 
                                 params = self.risk_manager.calculate_trade_parameters(available_balance, current_price, ohlcv_15m, direction=action)
                                 amount = params['amount']
-                                sl_price = params['sl_price']
-                                tp_price = params['tp_price']
+                                trail_price = params['trail_price']
                                 
                                 if amount > 0:
                                     try:
-                                        self.db.log_message("INFO", f"Executing BRACKET {action} for {amount} {symbol} at {current_price} | SL: {sl_price} | TP: {tp_price}")
+                                        self.db.log_message("INFO", f"Executing {action} for {amount} {symbol} at {current_price} | Trail: {trail_price}")
                                         if action == "BUY":
-                                            order = self.exchange.create_bracket_buy_order(symbol, amount, sl_price, tp_price)
+                                            order = self.exchange.create_trailing_buy_order(symbol, amount, trail_price)
                                         else:
-                                            order = self.exchange.create_bracket_sell_order(symbol, amount, sl_price, tp_price)
+                                            order = self.exchange.create_trailing_sell_order(symbol, amount, trail_price)
                                         cost = order.get('cost')
                                         if cost is None:
                                             cost = current_price * amount

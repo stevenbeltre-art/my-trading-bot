@@ -1,5 +1,5 @@
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest, TakeProfitRequest, StopLossRequest
+from alpaca.trading.requests import MarketOrderRequest, TakeProfitRequest, StopLossRequest, TrailingStopOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 
 from alpaca.data.historical.stock import StockHistoricalDataClient
@@ -114,51 +114,68 @@ class ExchangeInterface:
             except Exception:
                 return []
 
-    def create_bracket_buy_order(self, symbol: str, amount: float, sl_price: float, tp_price: float) -> Dict[str, Any]:
-        """Execute a market buy order with attached Stop-Loss and Take-Profit strings via Alpaca-py."""
+    def create_trailing_buy_order(self, symbol: str, amount: float, trail_price: float) -> Dict[str, Any]:
+        """Execute a market buy order immediately followed by a Trailing Stop Sell via Alpaca-py."""
         with self.lock:
             try:
-                # Alpaca expects specific base-pairs, e.g., 'BTC/USD'
-                
+                # 1. Submit Market Entry
                 market_order_data = MarketOrderRequest(
                     symbol=symbol,
                     qty=amount,
                     side=OrderSide.BUY,
-                    time_in_force=TimeInForce.GTC,
-                    take_profit=TakeProfitRequest(limit_price=round(tp_price, 2)),
-                    stop_loss=StopLossRequest(stop_price=round(sl_price, 2))
+                    time_in_force=TimeInForce.GTC
                 )
+                entry_order = self.trading_client.submit_order(order_data=market_order_data)
                 
-                order = self.trading_client.submit_order(order_data=market_order_data)
+                # 2. Prevent race conditions by giving Alpaca a moment to log the position filling
+                time.sleep(1)
                 
-                # Format to look like CCXT for downstream compatibility
-                return {
-                    'id': str(order.id),
-                    'cost': float(order.notional) if order.notional else (float(order.qty) * float(order.filled_avg_price) if order.filled_avg_price else None)
-                }
-            except Exception as e:
-                raise Exception(f"Alpaca Order Failed: {e}")
-
-    def create_bracket_sell_order(self, symbol: str, amount: float, sl_price: float, tp_price: float) -> Dict[str, Any]:
-        """Execute a market sell (short) order with attached Stop-Loss and Take-Profit strings via Alpaca-py."""
-        with self.lock:
-            try:
-                # For short selling, SL is above current price, TP is below current price
-                market_order_data = MarketOrderRequest(
+                # 3. Submit Trailing Stop Exit
+                trailing_stop_data = TrailingStopOrderRequest(
                     symbol=symbol,
                     qty=amount,
                     side=OrderSide.SELL,
                     time_in_force=TimeInForce.GTC,
-                    take_profit=TakeProfitRequest(limit_price=round(tp_price, 2)),
-                    stop_loss=StopLossRequest(stop_price=round(sl_price, 2))
+                    trail_price=round(trail_price, 2)
                 )
-                
-                order = self.trading_client.submit_order(order_data=market_order_data)
+                self.trading_client.submit_order(order_data=trailing_stop_data)
                 
                 return {
-                    'id': str(order.id),
-                    'cost': float(order.notional) if order.notional else (float(order.qty) * float(order.filled_avg_price) if order.filled_avg_price else None)
+                    'id': str(entry_order.id),
+                    'cost': float(entry_order.notional) if entry_order.notional else (float(entry_order.qty) * float(entry_order.filled_avg_price) if entry_order.filled_avg_price else None)
                 }
             except Exception as e:
-                raise Exception(f"Alpaca Short Order Failed: {e}")
+                raise Exception(f"Alpaca Trailing Buy Failed: {e}")
+
+    def create_trailing_sell_order(self, symbol: str, amount: float, trail_price: float) -> Dict[str, Any]:
+        """Execute a market sell (short) order immediately followed by a Trailing Stop Buy via Alpaca-py."""
+        with self.lock:
+            try:
+                # 1. Submit Market Entry
+                market_order_data = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=amount,
+                    side=OrderSide.SELL,
+                    time_in_force=TimeInForce.GTC
+                )
+                entry_order = self.trading_client.submit_order(order_data=market_order_data)
+                
+                time.sleep(1)
+                
+                # 2. Submit Trailing Stop Exit
+                trailing_stop_data = TrailingStopOrderRequest(
+                    symbol=symbol,
+                    qty=amount,
+                    side=OrderSide.BUY,
+                    time_in_force=TimeInForce.GTC,
+                    trail_price=round(trail_price, 2)
+                )
+                self.trading_client.submit_order(order_data=trailing_stop_data)
+                
+                return {
+                    'id': str(entry_order.id),
+                    'cost': float(entry_order.notional) if entry_order.notional else (float(entry_order.qty) * float(entry_order.filled_avg_price) if entry_order.filled_avg_price else None)
+                }
+            except Exception as e:
+                raise Exception(f"Alpaca Trailing Short Failed: {e}")
 

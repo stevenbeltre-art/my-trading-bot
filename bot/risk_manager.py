@@ -58,7 +58,8 @@ class RiskManager:
             amount_to_buy = max_notional / current_price
 
         return {
-            "amount": amount_to_buy,
-            "sl_price": sl_price,
-            "tp_price": tp_price
+            "amount": round(amount_to_buy, 4),
+            "sl_price": round(sl_price, 2),
+            "tp_price": round(tp_price, 2),
+            "trail_price": round(sl_distance, 2)
         }

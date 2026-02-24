@@ -30,6 +30,12 @@ class StrategyEngine:
         df_15m['macd'] = macd_15m.macd()
         df_15m['macd_signal'] = macd_15m.macd_signal()
         
+        # VWAP Calculation
+        vwap_indicator = ta.volume.VolumeWeightedAveragePrice(
+            high=df_15m['high'], low=df_15m['low'], close=df_15m['close'], volume=df_15m['volume'], window=14
+        )
+        df_15m['vwap'] = vwap_indicator.volume_weighted_average_price()
+        
         # 4H DataFrame for Macro Trend Filter
         df_4h = pd.DataFrame(ohlcv_4h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         macd_4h = ta.trend.MACD(close=df_4h['close'], window_slow=26, window_fast=12, window_sign=9)
@@ -44,28 +50,32 @@ class StrategyEngine:
         rsi_val = latest_15m.get('rsi', 50)
         macd_val = latest_15m.get('macd', 0)
         macd_signal = latest_15m.get('macd_signal', 0)
+        vwap_val = latest_15m.get('vwap', 0)
+        close_price = latest_15m.get('close', 0)
         macro_hist = latest_4h.get('macd_hist', 0)
 
         # Macro Trend logic: Positive Histogram = Bullish Macro
         macro_trend = "BULLISH" if macro_hist > 0 else "BEARISH"
 
-        # Signal logic: Momentum Gathering (RSI < 55) + MACD crossover
+        # Signal logic: Momentum Gathering (RSI < 55) + MACD crossover + VWAP Confirmation
         tech_signal = "NEUTRAL"
-        if rsi_val < 55 and macd_val > macd_signal: 
+        if rsi_val < 55 and macd_val > macd_signal and close_price > vwap_val: 
             tech_signal = "BULLISH"
-        elif rsi_val > 65 and macd_val < macd_signal: 
+        elif rsi_val > 65 and macd_val < macd_signal and close_price < vwap_val: 
             tech_signal = "BEARISH"
 
         if symbol not in self.metrics:
             self.metrics[symbol] = {}
         self.metrics[symbol]['rsi'] = rsi_val
         self.metrics[symbol]['macd'] = macd_val
+        self.metrics[symbol]['vwap'] = vwap_val
         self.metrics[symbol]['tech_signal'] = tech_signal
         self.metrics[symbol]['macro_trend'] = macro_trend
 
         return {
             "rsi": rsi_val,
             "macd": macd_val,
+            "vwap": vwap_val,
             "signal": tech_signal,
             "macro": macro_trend
         }
