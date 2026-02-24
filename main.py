@@ -372,11 +372,11 @@ def render_dashboard_metrics():
                 # Convert UTC timestamp string to localized NY time
                 local_time = pd.to_datetime(log['timestamp'], utc=True).tz_convert('America/New_York')
                 time_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
-                log_messages.append(f"<span style='color:{color}'>[{time_str}]</span> {log['message']}")
+                log_messages.append(f"<div><span style='color:{color}'>[{time_str}]</span> {log['message']}</div>")
             
             st.markdown(
-                f"<div style='background:rgba(15,15,18,0.8); padding:15px; border-radius:12px; font-family:\"Roboto Mono\", monospace; font-size:12px; height:350px; overflow-y:auto; border:1px solid rgba(255,255,255,0.05);'>"
-                + "<br>".join(log_messages) + "</div>",
+                f"<div style='display:flex; flex-direction:column-reverse; background:rgba(15,15,18,0.8); padding:15px; border-radius:12px; font-family:\"Roboto Mono\", monospace; font-size:12px; height:350px; overflow-y:auto; border:1px solid rgba(255,255,255,0.05);'>"
+                + "".join(log_messages) + "</div>",
                 unsafe_allow_html=True
             )
         else:
