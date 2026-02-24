@@ -115,10 +115,16 @@ class TradingEngine:
                         ohlcv_4h = self._fetch_ohlcv_with_backoff(symbol, timeframe='4h', limit=100)
                         self.db.log_message("DEBUG", f"{symbol}: OHLCV fetched. Fetching Ticker...")
                         try:
-                            # Ticker can also hit 429, but usually OHLCV triggers it first. 
                             ticker = self.exchange.fetch_ticker(symbol)
                             current_price = ticker['last']
                             self.db.log_message("DEBUG", f"{symbol}: Price {current_price}")
+                            
+                            # Update metrics for the UI to consume safely
+                            if not hasattr(self.strategy, 'metrics'):
+                                self.strategy.metrics = {}
+                            if symbol not in self.strategy.metrics:
+                                self.strategy.metrics[symbol] = {}
+                            self.strategy.metrics[symbol]['last_price'] = current_price
                         except Exception as e:
                             self.db.log_message("WARNING", f"Could not fetch ticker for {symbol}: {e}")
                             continue # Skip to next coin

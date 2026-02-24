@@ -6,6 +6,7 @@ import sqlite3
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from bot.engine import TradingEngine
+from st_aggrid import AgGrid, GridOptionsBuilder, ColumnsAutoSizeMode, JsCode
 
 # --- Configuration ---
 st.set_page_config(
@@ -13,6 +14,104 @@ st.set_page_config(
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
+)
+
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&display=swap');
+    
+    html, body, [class*="st-"] {
+        font-family: 'Roboto Mono', monospace !important;
+    }
+    
+    /* Sleek Dark Mode Background */
+    .stApp {
+        background-color: #121212 !important;
+        color: #E0E0E0 !important;
+    }
+    
+    /* Glassmorphism for containers and sidebar */
+    [data-testid="stSidebar"] {
+        background: rgba(18, 18, 18, 0.95) !important;
+        backdrop-filter: blur(10px) !important;
+        border-right: 1px solid rgba(255,255,255,0.05);
+    }
+    
+    /* Rounded buttons with hover effects */
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        transition: all 0.2s ease-in-out !important;
+        background: rgba(30, 30, 30, 0.6) !important;
+        color: #fff !important;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,255,255,0.15) !important;
+        border-color: rgba(0, 255, 255, 0.4) !important;
+    }
+    
+    /* Primary Kill Switch Button Styling */
+    button[kind="primary"] {
+        background-color: #FF1744 !important;
+        color: white !important;
+        border-color: transparent !important;
+    }
+    button[kind="primary"]:hover {
+        box-shadow: 0 4px 12px rgba(255, 23, 68, 0.4) !important;
+    }
+
+    /* Beautiful Metrics Cards (Top Bar) */
+    div[data-testid="metric-container"] {
+        background: rgba(25, 25, 30, 0.6) !important;
+        border: 1px solid rgba(255,255,255,0.05) !important;
+        border-radius: 12px !important;
+        padding: 1rem !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important;
+        backdrop-filter: blur(10px) !important;
+    }
+    
+    /* Metric Value Colors */
+    div[data-testid="metric-container"] label {
+        color: #888888 !important;
+        font-weight: 500 !important;
+        font-size: 0.9rem !important;
+    }
+    div[data-testid="metric-container"] div[data-testid="stMetricValue"] {
+        color: #00E676 !important; /* Neon Green Tint */
+        font-weight: 600 !important;
+        font-size: 2.2rem !important;
+    }
+
+    /* Prevent Streamlit from 'dimming' stale components during auto-refreshes */
+    div[data-testid="stVerticalBlock"] div[data-stale="true"], 
+    div[data-testid="stDataFrame"] div[data-stale="true"],
+    [data-testid="stAppViewContainer"] [data-stale="true"] {
+        opacity: 1 !important;
+        transition: none !important;
+        filter: none !important;
+    }
+    
+    /* Hide the top-right 'Running...' indicator to stop flashing text */
+    [data-testid="stStatusWidget"] {
+        visibility: hidden !important;
+    }
+    
+    /* Selectbox styling */
+    .stSelectbox div[data-baseweb="select"] > div {
+        background-color: rgba(30, 30, 30, 0.8) !important;
+        border-radius: 8px;
+        color: white;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    hr {
+        border-color: rgba(255,255,255,0.05) !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
 # --- Ensure Engine Exists as a Global Singleton ---
@@ -26,111 +125,67 @@ except Exception as e:
     st.error(f"Initialization Error: Please ensure you have copied `.env` and added your API keys. Error: {e}")
     st.stop()
 
-@st.fragment(run_every="4s")
-def render_sidebar_metrics():
-    """Isolated sidebar component to fetch balances natively without relying on cross-layout placeholders."""
-    balance_info = engine.exchange.fetch_balance()
-    quote_currency = "USD"
-    available_balance = balance_info.get(quote_currency, {}).get('free', 0.0)
-    st.metric(label=f"Available {quote_currency}", value=f"${available_balance:,.2f}")
-
 # --- Sidebar ---
 with st.sidebar:
-    st.title("⚙️ Bot Controls")
-    
-    st.write(f"**Tracking**: {len(engine.symbols)} Assets")
-    st.write(f"**Exchange**: Alpaca High-Volume Universe (Paper Trading)")
-    
+    st.markdown("<h1 style='text-align: center; color: #00E676;'>⚡ ELITE QUANT</h1>", unsafe_allow_html=True)
     st.markdown("---")
-    view_symbol = st.selectbox("View Coin Details", ["ALL"] + engine.symbols)
     
-    status_text = "🟢 RUNNING" if engine.is_running else "🔴 STOPPED"
-    st.markdown(f"### Status: {status_text}")
+    st.write(f"**Tracking Universe**: {len(engine.symbols)} Assets")
+    st.write(f"**Exchange Route**: Alpaca (Paper)")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    view_symbol = st.selectbox("🎯 Target Component", ["ALL"] + engine.symbols)
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    status_text = "🟢 ONLINE" if engine.is_running else "🔴 OFFLINE"
+    st.markdown(f"**Engine Status**: {status_text}")
+    
+    if st.button("▶ START ENGINE", width='stretch', disabled=engine.is_running):
+        engine.start()
+        st.rerun()
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Start Bot", use_container_width=True, disabled=engine.is_running, type="primary"):
-            engine.start()
-            st.rerun()
-            
-    with col2:
-        if st.button("Kill Switch", use_container_width=True, disabled=not engine.is_running, type="primary"):
-            engine.stop()
-            st.rerun()
-            
-    st.markdown("---")
-    st.write("### Account Balance")
+# --- Top Bar / Header Area ---
+st.markdown("## 📊 TERMINAL OVERVIEW")
+
+col_bal, col_eq, col_pnl, col_kill = st.columns([1, 1, 1, 1])
+
+with col_bal:
     try:
-        render_sidebar_metrics()
-    except Exception as e:
-        st.error(f"Balance error: {e}")
+        balance_info = engine.exchange.fetch_balance()
+        available_balance = balance_info.get("USD", {}).get('free', 0.0)
+        st.metric(label="AVAILABLE BALANCE", value=f"${available_balance:,.2f}")
+    except:
+        st.metric(label="AVAILABLE BALANCE", value="Syncing...")
 
-# --- Main Logic / Refresh ---
+with col_eq:
+    st.metric(label="TOTAL EQUITY", value="WAITING") # Placeholder for broader portfolio logic
+
+with col_pnl:
+    total_trades = 0
+    with engine.db._get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM trades")
+        res = cursor.fetchone()
+        if res: total_trades = res[0]
+    st.metric(label="LIFETIME EXECUTIONS", value=str(total_trades))
+
+with col_kill:
+    st.write("") # Vertical padding
+    if st.button("🛑 KILL SWITCH", width='stretch', disabled=not engine.is_running, type="primary"):
+        engine.stop()
+        st.rerun()
+
 st.markdown("---")
 
-@st.fragment(run_every="3s")
+# --- Main Logic / Refresh ---
+@st.fragment(run_every="4s")
 def render_dashboard_metrics():
     """Isolated dashboard component to refresh metrics without losing browser scroll position."""
     
-    # 1. Overview Section
+    # 1. Main Stage Interactive Chart
     if view_symbol == "ALL":
-        st.subheader("Live Strategy Metrics: High-Volume Universe")
-        
-        # Build Portfolio Grid
-        if engine.is_running and hasattr(engine.strategy, 'metrics'):
-            grid_data = []
-            for sym in engine.symbols:
-                metrics = engine.strategy.metrics.get(sym, {})
-                grid_data.append({
-                    "Asset": sym,
-                    "RSI (15m)": str(round(metrics.get('rsi', 0.0), 2)) if metrics.get('rsi') else "N/A",
-                    "MACD (15m)": metrics.get('tech_signal', 'WAITING'),
-                    "Macro Trend (4H)": metrics.get('macro_trend', 'WAITING'),
-                    "Sentiment": metrics.get('sentiment', 'WAITING'),
-                    "Execution Status": metrics.get('rejection_reason', 'Monitoring...')
-                })
-            
-            df_grid = pd.DataFrame(grid_data)
-            # Use Streamlit's native dataframe displaying with hiding index
-            st.dataframe(df_grid, use_container_width=True, hide_index=True)
-            
-        else:
-            st.info("Start bot to populate live portfolio metrics grid.")
-    else:
-        st.subheader(f"Live Strategy Metrics: {view_symbol}")
-        col_m1, col_m2, col_m3 = st.columns(3)
-            
-        # Update Live Strategy Metrics
-        if engine.is_running:
-            metrics = engine.strategy.metrics.get(view_symbol, {}) if engine.strategy and hasattr(engine.strategy, 'metrics') else {}
-            rsi_val = metrics.get('rsi', 50.0)
-            macd_val = metrics.get('macd', 0.0)
-            sentiment = metrics.get('sentiment', 'WAITING')
-            tech_sig = metrics.get('tech_signal', 'NEUTRAL')
-            macro_trend = metrics.get('macro_trend', 'WAITING')
-            rejection_reason = metrics.get('rejection_reason', 'Monitoring...')
-            
-            col_m1.metric("Current RSI", f"{rsi_val:.2f}", delta=tech_sig, delta_color="normal")
-            col_m2.metric("4H Macro Trend", macro_trend)
-            col_m3.metric("AI Sentiment News", sentiment)
-            
-            if rejection_reason != "Monitoring..." and rejection_reason != "Signal Approved":
-                st.warning(f"**Execution Status:** {rejection_reason}")
-            elif rejection_reason == "Signal Approved":
-                st.success(f"**Execution Status:** {rejection_reason}")
-            else:
-                st.info(f"**Execution Status:** {rejection_reason}")
-        else:
-            col_m1.info("Start bot to see metrics")
-            col_m2.info("Start bot to see metrics")
-            col_m3.info("Start bot to see metrics")
-            col_m2.info("Start bot to see metrics")
-            col_m3.info("Start bot to see metrics")
-        
-    # 2. Chart Section
-    st.markdown("---")
-    if view_symbol == "ALL":
-        st.title("Live Chart: ALL (Comparative % Change)")
+        st.subheader("🌐 Global Macro Universe (Live % Change)")
         try:
             now = time.time()
             if 'cached_all_fig' not in st.session_state or now - st.session_state.get('last_all_update', 0) > 60:
@@ -146,26 +201,29 @@ def render_dashboard_metrics():
                             df_chart['pct_change'] = ((df_chart['close'] - baseline) / baseline) * 100
                             
                             fig.add_trace(go.Scatter(x=df_chart['time'], y=df_chart['pct_change'], name=sym, line=dict(width=2)))
-                    except Exception as e:
+                    except Exception:
                         continue
                         
                 fig.update_layout(
                     yaxis_title='Price Change (%)',
                     xaxis_rangeslider_visible=False,
-                    height=600,
+                    height=500,
                     template="plotly_dark",
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
                     margin=dict(l=0, r=0, t=30, b=0),
-                    hovermode='x unified'
+                    hovermode='x unified',
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
                 st.session_state.cached_all_fig = fig
                 st.session_state.last_all_update = now
                 
-            st.plotly_chart(st.session_state.cached_all_fig, use_container_width=True)
-            st.caption("Note: 'ALL' chart refreshes every 60s to prevent API rate limiting.")
+            st.plotly_chart(st.session_state.cached_all_fig, width='stretch')
         except Exception as e:
-            st.warning(f"Waiting for chart data to populate... ({e})")
+            st.warning(f"Terminal syncing chart data... ({e})")
+            
     else:
-        st.title(f"Live Chart: {view_symbol}")
+        st.subheader(f"📈 {view_symbol} Live Tracking")
         try:
             ohlcv = engine.exchange.fetch_ohlcv(view_symbol, timeframe='15m', limit=150)
             df_chart = pd.DataFrame(ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
@@ -174,71 +232,156 @@ def render_dashboard_metrics():
             # Calculate Moving Averages
             df_chart['MA7'] = df_chart['close'].rolling(window=7).mean()
             df_chart['MA25'] = df_chart['close'].rolling(window=25).mean()
-            df_chart['MA99'] = df_chart['close'].rolling(window=99).mean()
             
             # Build Figure
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                                vertical_spacing=0.03, subplot_titles=(view_symbol, 'Volume'), 
+                                vertical_spacing=0.03, subplot_titles=('', ''), 
                                 row_width=[0.2, 0.7])
             
             # Candlesticks
             fig.add_trace(go.Candlestick(x=df_chart['time'], open=df_chart['open'], high=df_chart['high'],
-                low=df_chart['low'], close=df_chart['close'], name='Price'), row=1, col=1)
+                low=df_chart['low'], close=df_chart['close'], name='Price',
+                increasing_line_color='#00E676', decreasing_line_color='#FF1744'), row=1, col=1)
                 
             # MAs
-            fig.add_trace(go.Scatter(x=df_chart['time'], y=df_chart['MA7'], line=dict(color='purple', width=1), name='MA(7)'), row=1, col=1)
-            fig.add_trace(go.Scatter(x=df_chart['time'], y=df_chart['MA25'], line=dict(color='blue', width=1), name='MA(25)'), row=1, col=1)
-            fig.add_trace(go.Scatter(x=df_chart['time'], y=df_chart['MA99'], line=dict(color='orange', width=1), name='MA(99)'), row=1, col=1)
+            fig.add_trace(go.Scatter(x=df_chart['time'], y=df_chart['MA7'], line=dict(color='rgba(255,255,255,0.6)', width=1, dash='dot'), name='MA(7)'), row=1, col=1)
+            fig.add_trace(go.Scatter(x=df_chart['time'], y=df_chart['MA25'], line=dict(color='#00BFFF', width=1.5), name='MA(25)'), row=1, col=1)
             
             # Volume
-            colors = ['red' if row['open'] - row['close'] >= 0 else 'green' for index, row in df_chart.iterrows()]
+            colors = ['#FF1744' if row['open'] - row['close'] >= 0 else '#00E676' for index, row in df_chart.iterrows()]
             fig.add_trace(go.Bar(x=df_chart['time'], y=df_chart['volume'], marker_color=colors, name='Volume'), row=2, col=1)
             
             fig.update_layout(
                 yaxis_title='Price (USD)',
                 xaxis_rangeslider_visible=False,
-                height=600,
+                height=550,
                 template="plotly_dark",
-                margin=dict(l=0, r=0, t=30, b=0)
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=0, r=0, t=10, b=0)
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         except Exception as e:
-            st.warning(f"Waiting for chart data to populate... ({e})")
-        
-    # 3. Trades Section
+            st.warning(f"Terminal syncing chart data... ({e})")
+
+    # 2. Advanced Data Grid Section
     st.markdown("---")
-    st.subheader("Recent Trades")
-    trades = engine.db.get_recent_trades(10)
-    if trades:
-        df_trades = pd.DataFrame(trades)
-        df_trades['timestamp'] = pd.to_datetime(df_trades['timestamp'])
-        # Fill missing costs to 0 for display aesthetics if old data has None
-        df_trades['cost'] = df_trades['cost'].fillna(0.0) 
-        st.dataframe(df_trades, use_container_width=True, hide_index=True)
-    else:
-        st.info("No trades executed yet.")
+    st.subheader("⚡ Live Tracking Matrix")
+    
+    if engine.is_running and hasattr(engine.strategy, 'metrics'):
+        grid_data = []
+        for sym in engine.symbols:
+            metrics = engine.strategy.metrics.get(sym, {})
+            price = metrics.get('last_price', 'N/A')
+                
+            grid_data.append({
+                "Asset": sym,
+                "Price": f"${price:,.2f}" if isinstance(price, (float, int)) else price,
+                "RSI (15m)": str(round(metrics.get('rsi', 0.0), 2)) if metrics.get('rsi') else "N/A",
+                "MACD (15m)": metrics.get('tech_signal', 'WAITING'),
+                "Macro Trend (4H)": metrics.get('macro_trend', 'WAITING'),
+                "AI Sentiment": metrics.get('sentiment', 'WAITING'),
+                "Status": metrics.get('rejection_reason', 'Monitoring...')
+            })
         
-    # 4. Logs Section
+        df_grid = pd.DataFrame(grid_data)
+        
+        gb = GridOptionsBuilder.from_dataframe(df_grid)
+        gb.configure_default_column(flex=1, minWidth=120, filter=True, sortable=True)
+        
+        # JSCode for Conditional Formatting
+        sentiment_js = JsCode("""
+        function(params) {
+            if (params.value.includes('BULLISH')) {
+                return {'color': '#00E676', 'fontWeight': 'bold'};
+            } else if (params.value.includes('BEARISH')) {
+                return {'color': '#FF1744', 'fontWeight': 'bold'};
+            }
+            return {'color': '#00BFFF'};
+        }
+        """)
+        gb.configure_column("AI Sentiment", cellStyle=sentiment_js)
+        
+        rsi_js = JsCode("""
+        function(params) {
+            if (params.value === 'N/A') {
+                return {'color': '#888888'};
+            } else if (parseFloat(params.value) >= 70) {
+                return {'color': '#FF1744', 'fontWeight': 'bold'};
+            } else if (parseFloat(params.value) <= 30) {
+                return {'color': '#00E676', 'fontWeight': 'bold'};
+            }
+            return {'color': '#E0E0E0'};
+        }
+        """)
+        gb.configure_column("RSI (15m)", cellStyle=rsi_js)
+        
+        trend_js = JsCode("""
+        function(params) {
+            if (params.value === 'BULLISH') {
+                return {'color': '#00E676', 'fontWeight': 'bold'};
+            } else if (params.value === 'BEARISH') {
+                return {'color': '#FF1744', 'fontWeight': 'bold'};
+            }
+            return {'color': '#E0E0E0'};
+        }
+        """)
+        gb.configure_column("Macro Trend (4H)", cellStyle=trend_js)
+        gb.configure_column("MACD (15m)", cellStyle=trend_js)
+
+        gridOptions = gb.build()
+        
+        AgGrid(
+            df_grid,
+            gridOptions=gridOptions,
+            allow_unsafe_jscode=True,
+            columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+            theme='streamlit', # Melds perfectly with Streamlit's native dark mode
+            height=350
+        )
+    else:
+        st.info("Terminal standing by. Click 'START ENGINE' to populate matrix.")
+
+    # 3. Trades & Logs
     st.markdown("---")
-    st.subheader("System Logs")
-    with engine.db._get_connection() as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT timestamp, level, message FROM logs ORDER BY id DESC LIMIT 15")
-        logs = [dict(row) for row in cursor.fetchall()]
-        
-    if logs:
-        log_messages = []
-        for log in logs:
-            color = "green" if log['level'] == "INFO" else "red" if log['level'] == "ERROR" else "grey"
-            log_messages.append(f":{color}[{log['timestamp']} - {log['message']}]")
-        st.markdown("  \n".join(log_messages))
-    else:
-        st.info("No logs generated yet.")
+    col_t1, col_t2 = st.columns([1.2, 1])
+    
+    with col_t1:
+        st.subheader("Recent Executions")
+        trades = engine.db.get_recent_trades(10)
+        if trades:
+            df_trades = pd.DataFrame(trades)
+            df_trades['timestamp'] = pd.to_datetime(df_trades['timestamp'])
+            df_trades['cost'] = df_trades['cost'].fillna(0.0) 
+            st.dataframe(df_trades, width='stretch', hide_index=True)
+        else:
+            st.info("No trades executed yet.")
+            
+    with col_t2:
+        st.subheader("System Console")
+        with engine.db._get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT timestamp, level, message FROM logs ORDER BY id DESC LIMIT 20")
+            logs = [dict(row) for row in cursor.fetchall()]
+            
+        if logs:
+            log_messages = []
+            for log in logs:
+                color = "#00E676" if log['level'] == "INFO" else "#FF1744" if log['level'] == "ERROR" else "#888888"
+                time_str = log['timestamp'].split('.')[0] if '.' in log['timestamp'] else log['timestamp']
+                log_messages.append(f"<span style='color:{color}'>[{time_str}]</span> {log['message']}")
+            
+            st.markdown(
+                f"<div style='background:rgba(15,15,18,0.8); padding:15px; border-radius:12px; font-family:\"Roboto Mono\", monospace; font-size:12px; height:350px; overflow-y:auto; border:1px solid rgba(255,255,255,0.05);'>"
+                + "<br>".join(log_messages) + "</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.info("No logs generated yet.")
 
 # Execute UI rendering fragments
 try:
     render_dashboard_metrics()
 except Exception as e:
     st.error(f"UI Loading Error: {e}")
-
