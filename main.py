@@ -40,6 +40,11 @@ st.markdown(
         color: #E0E0E0 !important;
     }
     
+    /* Push main content block down to clear the absolute-positioned sidebar toggle */
+    .block-container {
+        padding-top: 3rem !important;
+    }
+    
     /* Glassmorphism for containers and sidebar */
     [data-testid="stSidebar"] {
         background: rgba(18, 18, 18, 0.95) !important;
