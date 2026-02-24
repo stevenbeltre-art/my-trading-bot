@@ -218,7 +218,7 @@ def render_dashboard_metrics():
                 st.session_state.cached_all_fig = fig
                 st.session_state.last_all_update = now
                 
-            st.plotly_chart(st.session_state.cached_all_fig, width='stretch')
+            st.plotly_chart(st.session_state.cached_all_fig, use_container_width=True)
         except Exception as e:
             st.warning(f"Terminal syncing chart data... ({e})")
             
@@ -260,7 +260,7 @@ def render_dashboard_metrics():
                 plot_bgcolor='rgba(0,0,0,0)',
                 margin=dict(l=0, r=0, t=10, b=0)
             )
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.warning(f"Terminal syncing chart data... ({e})")
 
