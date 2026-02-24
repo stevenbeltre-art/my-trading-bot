@@ -85,10 +85,10 @@ st.markdown(
         font-size: 2.2rem !important;
     }
 
-    /* Prevent Streamlit from 'dimming' stale components during auto-refreshes */
-    div[data-testid="stVerticalBlock"] div[data-stale="true"], 
-    div[data-testid="stDataFrame"] div[data-stale="true"],
-    [data-testid="stAppViewContainer"] [data-stale="true"] {
+    /* Prevent Streamlit from 'dimming' ANY stale components during auto-refreshes */
+    [data-stale="true"],
+    div[data-stale="true"],
+    span[data-stale="true"] {
         opacity: 1 !important;
         transition: none !important;
         filter: none !important;
