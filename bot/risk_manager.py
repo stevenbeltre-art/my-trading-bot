@@ -35,11 +35,23 @@ class RiskManager:
         tp_price = current_price + tp_distance
 
         # 3. Calculate Volatility-Adjusted Position Size
-        # If we hit SL, we lose strictly (balance * 0.02) dollars.
+        # If we hit SL, we lose strictly (balance * 0.10) dollars.
         risk_capital_dollars = balance * self.risk_per_trade_pct
         
         # How many units can we buy so that a drop of `sl_distance` equals `risk_capital_dollars`?
         amount_to_buy = risk_capital_dollars / sl_distance
+        
+        # Cap the position size so the total cost doesn't exceed our available purchasing power
+        # (Using 95% of available balance to leave room for fees/slippage)
+        max_notional = balance * 0.95 
+        
+        # Alpaca has a strict $200,000 notional limit per crypto order
+        if max_notional > 195000:
+            max_notional = 195000
+            
+        proposed_cost = amount_to_buy * current_price
+        if proposed_cost > max_notional:
+            amount_to_buy = max_notional / current_price
 
         return {
             "amount": amount_to_buy,
