@@ -6,7 +6,7 @@ import sqlite3
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from bot.engine import TradingEngine
-from st_aggrid import AgGrid, GridOptionsBuilder, ColumnsAutoSizeMode, JsCode
+
 
 # --- Configuration ---
 st.set_page_config(
@@ -286,59 +286,31 @@ def render_dashboard_metrics():
         
         df_grid = pd.DataFrame(grid_data)
         
-        gb = GridOptionsBuilder.from_dataframe(df_grid)
-        gb.configure_default_column(flex=1, minWidth=120, filter=True, sortable=True)
-        
-        # JSCode for Conditional Formatting
-        sentiment_js = JsCode("""
-        function(params) {
-            if (params.value.includes('BULLISH')) {
-                return {'color': '#00E676', 'fontWeight': 'bold'};
-            } else if (params.value.includes('BEARISH')) {
-                return {'color': '#FF1744', 'fontWeight': 'bold'};
-            }
-            return {'color': '#00BFFF'};
-        }
-        """)
-        gb.configure_column("AI Sentiment", cellStyle=sentiment_js)
-        
-        rsi_js = JsCode("""
-        function(params) {
-            if (params.value === 'N/A') {
-                return {'color': '#888888'};
-            } else if (parseFloat(params.value) >= 70) {
-                return {'color': '#FF1744', 'fontWeight': 'bold'};
-            } else if (parseFloat(params.value) <= 30) {
-                return {'color': '#00E676', 'fontWeight': 'bold'};
-            }
-            return {'color': '#E0E0E0'};
-        }
-        """)
-        gb.configure_column("RSI (15m)", cellStyle=rsi_js)
-        
-        trend_js = JsCode("""
-        function(params) {
-            if (params.value === 'BULLISH') {
-                return {'color': '#00E676', 'fontWeight': 'bold'};
-            } else if (params.value === 'BEARISH') {
-                return {'color': '#FF1744', 'fontWeight': 'bold'};
-            }
-            return {'color': '#E0E0E0'};
-        }
-        """)
-        gb.configure_column("Macro Trend (4H)", cellStyle=trend_js)
-        gb.configure_column("MACD (15m)", cellStyle=trend_js)
+        # Native Pandas Styler for Conditional Formatting
+        def highlight_sentiment(val):
+            if 'BULLISH' in str(val): return 'color: #00E676; font-weight: bold'
+            if 'BEARISH' in str(val): return 'color: #FF1744; font-weight: bold'
+            return 'color: #00BFFF'
 
-        gridOptions = gb.build()
-        
-        AgGrid(
-            df_grid,
-            gridOptions=gridOptions,
-            allow_unsafe_jscode=True,
-            columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
-            theme='streamlit', # Melds perfectly with Streamlit's native dark mode
-            height=350
-        )
+        def highlight_rsi(val):
+            if val == 'N/A': return 'color: #888888'
+            try:
+                v = float(val)
+                if v >= 70: return 'color: #FF1744; font-weight: bold'
+                if v <= 30: return 'color: #00E676; font-weight: bold'
+            except: pass
+            return 'color: #E0E0E0'
+
+        def highlight_trend(val):
+            if val == 'BULLISH': return 'color: #00E676; font-weight: bold'
+            if val == 'BEARISH': return 'color: #FF1744; font-weight: bold'
+            return 'color: #E0E0E0'
+
+        styled_df = df_grid.style.map(highlight_rsi, subset=['RSI (15m)']) \
+                                 .map(highlight_sentiment, subset=['AI Sentiment']) \
+                                 .map(highlight_trend, subset=['Macro Trend (4H)', 'MACD (15m)'])
+
+        st.dataframe(styled_df, use_container_width=True, hide_index=True, height=350)
     else:
         st.info("Terminal standing by. Click 'START ENGINE' to populate matrix.")
 
