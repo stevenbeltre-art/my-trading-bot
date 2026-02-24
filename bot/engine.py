@@ -92,7 +92,12 @@ class TradingEngine:
                 # Pre-fetch balance once per main loop iteration
                 self.db.log_message("DEBUG", "Fetching balance...")
                 balance_info = self.exchange.fetch_balance()
-                self.db.log_message("DEBUG", "Balance fetched.")
+                
+                # Fetch active positions to correctly determine true holding status for Long/Short 
+                active_positions_raw = self.exchange.fetch_positions()
+                active_symbols = [p.symbol for p in active_positions_raw]
+                
+                self.db.log_message("DEBUG", "Balance and Positions fetched.")
                 
                 market_is_open = self._get_market_status()
                 
@@ -130,56 +135,57 @@ class TradingEngine:
                             continue # Skip to next coin
         
                         # 2. Check Open Position Status Natively
-                        base_currency = symbol.split('/')[0] if is_crypto else symbol
-                        coin_balance = balance_info.get(base_currency, {}).get('total', 0.0)
+                        alpaca_symbol = symbol.replace('/', '')
+                        is_held = alpaca_symbol in active_symbols
                         
-                        if self.open_positions[symbol]:
-                            # If we marked it open, check if Alpaca natively closed it (hit SL/TP)
-                            if coin_balance <= 0.00001:
+                        if self.open_positions.get(symbol):
+                            # If we marked it open locally, check if Alpaca natively closed it (hit SL/TP)
+                            if not is_held:
                                 self.db.log_message("INFO", f"{symbol} Position closed natively by Alpaca Bracket Order.")
-                                # Assuming native close, update database. (Real PnL sync requires order query, marking 0 for simplicity here)
                                 self.db.update_trade_pnl(self.open_positions[symbol]['id'], 0, "CLOSED_NATIVELY")
                                 self.open_positions[symbol] = None
-                            else:
-                                pass # Still open, let Alpaca's robust OCO engine handle it on their servers.
                                 
                         # 3. Look for new Entry
-                        elif coin_balance <= 0.00001: 
+                        elif not is_held: 
                             action = self.strategy.determine_trade_action(ohlcv_15m, ohlcv_4h, symbol)
                             
-                            if action == "BUY":
-                                self.db.log_message("INFO", f"{symbol} Strategy signal: BUY.")
-                                quote_currency = symbol.split('/')[1]
-                                available_balance = balance_info.get(quote_currency, {}).get('free', 10000.0)
+                            if action in ["BUY", "SELL"]:
+                                self.db.log_message("INFO", f"{symbol} Strategy signal: {action}.")
+                                
+                                # Available fiat cash to trade with (Alpaca handles everything in USD natively)
+                                available_balance = balance_info.get('USD', {}).get('free', 10000.0)
                                 
                                 # Prevent making dust/micro trades if account is already fully deployed
                                 if available_balance < 10.0:
                                     self.db.log_message("WARNING", f"{symbol}: Insufficient free cash ({available_balance}) for meaningful trade. Skipping.")
                                     continue
                                 
-                                params = self.risk_manager.calculate_trade_parameters(available_balance, current_price, ohlcv_15m)
-                                amount_to_buy = params['amount']
+                                params = self.risk_manager.calculate_trade_parameters(available_balance, current_price, ohlcv_15m, direction=action)
+                                amount = params['amount']
                                 sl_price = params['sl_price']
                                 tp_price = params['tp_price']
                                 
-                                if amount_to_buy > 0:
+                                if amount > 0:
                                     try:
-                                        self.db.log_message("INFO", f"Executing BRACKET BUY for {amount_to_buy} {symbol} at {current_price} | SL: {sl_price} | TP: {tp_price}")
-                                        order = self.exchange.create_bracket_buy_order(symbol, amount_to_buy, sl_price, tp_price)
+                                        self.db.log_message("INFO", f"Executing BRACKET {action} for {amount} {symbol} at {current_price} | SL: {sl_price} | TP: {tp_price}")
+                                        if action == "BUY":
+                                            order = self.exchange.create_bracket_buy_order(symbol, amount, sl_price, tp_price)
+                                        else:
+                                            order = self.exchange.create_bracket_sell_order(symbol, amount, sl_price, tp_price)
                                         cost = order.get('cost')
                                         if cost is None:
-                                            cost = current_price * amount_to_buy
+                                            cost = current_price * amount
                                     except Exception as e:
-                                        self.db.log_message("WARNING", f"{symbol} Buy failed, sim: {e}")
-                                        cost = current_price * amount_to_buy
-                                        amount_to_buy = cost / current_price
+                                        self.db.log_message("WARNING", f"{symbol} {action} failed, assuming simulated fill: {e}")
+                                        cost = current_price * amount
+                                        amount = cost / current_price
                                         
-                                    trade_id = self.db.log_trade(symbol, "BUY", current_price, amount_to_buy, cost, "OPEN")
+                                    trade_id = self.db.log_trade(symbol, action, current_price, amount, cost, "OPEN")
                                     
                                     self.open_positions[symbol] = {
                                         "id": trade_id,
                                         "entry_price": current_price,
-                                        "amount": amount_to_buy
+                                        "amount": amount
                                     }
                                 
                     except Exception as e:

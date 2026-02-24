@@ -4,7 +4,7 @@ from alpaca.trading.enums import OrderSide, TimeInForce
 
 from alpaca.data.historical.stock import StockHistoricalDataClient
 from alpaca.data.historical.crypto import CryptoHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest
+from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest, StockTradesRequest, CryptoTradesRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.data.enums import DataFeed
 
@@ -40,12 +40,12 @@ class ExchangeInterface:
         with self.lock:
             if self._is_crypto(symbol):
                 # Using latest trades for crypto
-                req = alpaca.data.requests.CryptoTradesRequest(symbol_or_symbols=symbol)
+                req = CryptoTradesRequest(symbol_or_symbols=symbol)
                 latest = self.crypto_data_client.get_crypto_latest_trade(req)
                 return {'last': latest[symbol].price}
             else:
                 # Using latest trades for stock
-                req = alpaca.data.requests.StockTradesRequest(symbol_or_symbols=symbol, feed=DataFeed.IEX)
+                req = StockTradesRequest(symbol_or_symbols=symbol, feed=DataFeed.IEX)
                 latest = self.stock_data_client.get_stock_latest_trade(req)
                 return {'last': latest[symbol].price}
 
@@ -138,4 +138,27 @@ class ExchangeInterface:
                 }
             except Exception as e:
                 raise Exception(f"Alpaca Order Failed: {e}")
+
+    def create_bracket_sell_order(self, symbol: str, amount: float, sl_price: float, tp_price: float) -> Dict[str, Any]:
+        """Execute a market sell (short) order with attached Stop-Loss and Take-Profit strings via Alpaca-py."""
+        with self.lock:
+            try:
+                # For short selling, SL is above current price, TP is below current price
+                market_order_data = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=amount,
+                    side=OrderSide.SELL,
+                    time_in_force=TimeInForce.GTC,
+                    take_profit=TakeProfitRequest(limit_price=round(tp_price, 2)),
+                    stop_loss=StopLossRequest(stop_price=round(sl_price, 2))
+                )
+                
+                order = self.trading_client.submit_order(order_data=market_order_data)
+                
+                return {
+                    'id': str(order.id),
+                    'cost': float(order.notional) if order.notional else (float(order.qty) * float(order.filled_avg_price) if order.filled_avg_price else None)
+                }
+            except Exception as e:
+                raise Exception(f"Alpaca Short Order Failed: {e}")
 

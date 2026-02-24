@@ -156,7 +156,20 @@ class StrategyEngine:
                 
             # If we pass all filters
             self.metrics[symbol]['rejection_reason'] = "Signal Approved"
-            return "BUY"
+        elif tech_signal == "BEARISH":
+            # 2. Sentiment Directional Filter
+            headlines = self.fetch_recent_news(symbol)
+            sentiment_signal = self.analyze_sentiment(headlines)
+            self.metrics[symbol]['sentiment'] = sentiment_signal
+            
+            # 1. Aggressive Macro Filter for Shorts (Only block if BOTH Macro AND Sentiment are Bullish)
+            if macro_trend == "BULLISH" and sentiment_signal == "BULLISH":
+                self.metrics[symbol]['rejection_reason'] = "Blocked: 4H Macro & News Bullish"
+                return "HOLD"
+                
+            # If we pass filters, execute Short/Sell
+            self.metrics[symbol]['rejection_reason'] = "Signal Approved (SHORT)"
+            return "SELL"
             
         else:
             self.metrics[symbol]['sentiment'] = "WAITING ON MATH"
