@@ -25,6 +25,11 @@ st.markdown(
         font-family: 'Roboto Mono', monospace !important;
     }
     
+    /* Restore Material Icons that were overwritten by the global font */
+    .material-symbols-rounded {
+        font-family: 'Material Symbols Rounded' !important;
+    }
+    
     /* Sleek Dark Mode Background */
     .stApp {
         background-color: #121212 !important;
