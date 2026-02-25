@@ -139,11 +139,34 @@ class TradingEngine:
                         is_held = alpaca_symbol in active_symbols
                         
                         if self.open_positions.get(symbol):
-                            # If we marked it open locally, check if Alpaca natively closed it (hit SL/TP)
+                            # If we marked it open locally, check if Alpaca natively closed it (hit Trailing Stop)
                             if not is_held:
                                 self.db.log_message("INFO", f"{symbol} Position closed natively by Alpaca Bracket Order.")
                                 self.db.update_trade_pnl(self.open_positions[symbol]['id'], 0, "CLOSED_NATIVELY")
                                 self.open_positions[symbol] = None
+                            else:
+                                # Monitor for $5,000 Hard Take Profit
+                                try:
+                                    position_data = next((p for p in active_positions if p.symbol == alpaca_symbol), None)
+                                    if position_data:
+                                        unrealized_pl = float(position_data.unrealized_pl)
+                                        # Update UI matrix with live PnL
+                                        self.strategy.metrics[symbol]['live_pnl'] = unrealized_pl
+                                        
+                                        if unrealized_pl >= 5000.0:
+                                            self.db.log_message("SUCCESS", f"{symbol} hit $5,000 Profit Target! Liquidating position natively.")
+                                            qty_to_close = float(position_data.qty)
+                                            side_to_close = "sell" if position_data.side == "long" else "buy"
+                                            # Close the position natively
+                                            # Market Order is fastest guaranteed execution
+                                            try:
+                                                self.exchange.create_market_order(symbol, qty_to_close, side_to_close)
+                                                self.db.update_trade_pnl(self.open_positions[symbol]['id'], unrealized_pl, "PROFIT_TAKEN")
+                                                self.open_positions[symbol] = None
+                                            except Exception as e:
+                                                self.db.log_message("ERROR", f"Failed to liquidate {symbol} crossing $5k: {e}")
+                                except Exception as e:
+                                    self.db.log_message("WARNING", f"Error monitoring PnL for {symbol}: {e}")
                                 
                         # 3. Look for new Entry
                         elif not is_held: 
@@ -164,14 +187,15 @@ class TradingEngine:
                                 params = self.risk_manager.calculate_trade_parameters(available_balance, current_price, ohlcv_15m, direction=action)
                                 amount = params['amount']
                                 trail_price = params['trail_price']
+                                hard_tp_price = params.get('hard_tp_price', current_price * 1.5) # Fallback if missing
                                 
                                 if amount > 0:
                                     try:
-                                        self.db.log_message("INFO", f"Executing {action} for {amount} {symbol} at {current_price} | Trail: {trail_price}")
+                                        self.db.log_message("INFO", f"Executing {action} for {amount} {symbol} at {current_price} | Trail: {trail_price} | Max TP: {hard_tp_price}")
                                         if action == "BUY":
-                                            order = self.exchange.create_trailing_buy_order(symbol, amount, trail_price)
+                                            order = self.exchange.create_trailing_buy_order(symbol, amount, trail_price, hard_tp_price)
                                         else:
-                                            order = self.exchange.create_trailing_sell_order(symbol, amount, trail_price)
+                                            order = self.exchange.create_trailing_sell_order(symbol, amount, trail_price, hard_tp_price)
                                         cost = order.get('cost')
                                         if cost is None:
                                             cost = current_price * amount

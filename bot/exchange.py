@@ -114,7 +114,26 @@ class ExchangeInterface:
             except Exception:
                 return []
 
-    def create_trailing_buy_order(self, symbol: str, amount: float, trail_price: float) -> Dict[str, Any]:
+    def create_market_order(self, symbol: str, amount: float, side: str) -> Dict[str, Any]:
+        """Execute a raw market order (used for emergency liquidations and hard Take-Profits)."""
+        with self.lock:
+            try:
+                alpaca_side = OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL
+                market_order_data = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=amount,
+                    side=alpaca_side,
+                    time_in_force=TimeInForce.GTC
+                )
+                order = self.trading_client.submit_order(order_data=market_order_data)
+                return {
+                    'id': str(order.id),
+                    'cost': float(order.notional) if order.notional else (float(order.qty) * float(order.filled_avg_price) if order.filled_avg_price else None)
+                }
+            except Exception as e:
+                raise Exception(f"Alpaca Market Order Failed: {e}")
+
+    def create_trailing_buy_order(self, symbol: str, amount: float, trail_price: float, hard_tp_price: float = 0) -> Dict[str, Any]:
         """Execute a market buy order immediately followed by a Trailing Stop Sell via Alpaca-py."""
         with self.lock:
             try:
@@ -147,7 +166,7 @@ class ExchangeInterface:
             except Exception as e:
                 raise Exception(f"Alpaca Trailing Buy Failed: {e}")
 
-    def create_trailing_sell_order(self, symbol: str, amount: float, trail_price: float) -> Dict[str, Any]:
+    def create_trailing_sell_order(self, symbol: str, amount: float, trail_price: float, hard_tp_price: float = 0) -> Dict[str, Any]:
         """Execute a market sell (short) order immediately followed by a Trailing Stop Buy via Alpaca-py."""
         with self.lock:
             try:

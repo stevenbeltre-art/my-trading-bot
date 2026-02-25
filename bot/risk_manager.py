@@ -57,9 +57,20 @@ class RiskManager:
         if proposed_cost > max_notional:
             amount_to_buy = max_notional / current_price
 
+        # 4. Calculate Absolute $5,000 Take-Profit Ceiling
+        # User requested a hard take-profit if the trade reaches $5,000 in profit.
+        # Required price move = $5,000 / Amount of coins bought
+        price_move_for_5k = 5000.0 / amount_to_buy if amount_to_buy > 0 else 0
+        
+        if direction == "BUY":
+            hard_tp_price = current_price + price_move_for_5k
+        else:
+            hard_tp_price = current_price - price_move_for_5k
+
         return {
             "amount": round(amount_to_buy, 4),
             "sl_price": round(sl_price, 2),
             "tp_price": round(tp_price, 2),
-            "trail_price": round(sl_distance, 2)
+            "trail_price": round(sl_distance, 2),
+            "hard_tp_price": round(hard_tp_price, 2)
         }
