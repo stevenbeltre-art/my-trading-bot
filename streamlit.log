@@ -1,15 +1,1 @@
-/Users/stevebeltre/Desktop/ANTIGRAVITY/trading_bot/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
-  warnings.warn(
-
-  You can now view your Streamlit app in your browser.
-
-  Local URL: http://localhost:8503
-  Network URL: http://10.0.0.40:8503
-  External URL: http://73.244.208.246:8503
-
-  For better performance, install the Watchdog module:
-
-  $ xcode-select --install
-  $ pip install watchdog
-            
-  Stopping...
+nohup: streamlit: No such file or directory
