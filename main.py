@@ -145,11 +145,11 @@ st.markdown(
 
 # --- Ensure Engine Exists as a Global Singleton ---
 @st.cache_resource
-def get_engine():
+def get_engine_v2():
     return TradingEngine()
 
 try:
-    engine = get_engine()
+    engine = get_engine_v2()
 except Exception as e:
     st.error(f"Initialization Error: Please ensure you have copied `.env` and added your API keys. Error: {e}")
     st.stop()
