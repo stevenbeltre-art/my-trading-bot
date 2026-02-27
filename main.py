@@ -51,10 +51,10 @@ st.markdown(
         padding-top: 4rem !important;
     }
     
-    /* Glassmorphism for containers and sidebar */
+    /* Premium Glassmorphism for containers and sidebar */
     [data-testid="stSidebar"] {
-        background: rgba(18, 18, 18, 0.95) !important;
-        backdrop-filter: blur(10px) !important;
+        background: rgba(10, 10, 14, 0.95) !important;
+        backdrop-filter: blur(20px) !important;
         border-right: 1px solid rgba(255,255,255,0.05);
     }
     
@@ -64,45 +64,54 @@ st.markdown(
         font-weight: 600 !important;
         border: 1px solid rgba(255,255,255,0.1) !important;
         transition: all 0.2s ease-in-out !important;
-        background: rgba(30, 30, 30, 0.6) !important;
+        background: linear-gradient(145deg, rgba(30, 30, 30, 0.8), rgba(15, 15, 15, 0.8)) !important;
         color: #fff !important;
     }
     .stButton > button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,255,255,0.15) !important;
-        border-color: rgba(0, 255, 255, 0.4) !important;
+        box-shadow: 0 8px 16px rgba(0, 230, 118, 0.15) !important;
+        border-color: rgba(0, 230, 118, 0.5) !important;
     }
     
     /* Primary Kill Switch Button Styling */
     button[kind="primary"] {
-        background-color: #FF1744 !important;
+        background: linear-gradient(145deg, #FF1744, #D50000) !important;
         color: white !important;
         border-color: transparent !important;
+        box-shadow: 0 4px 12px rgba(255, 23, 68, 0.3) !important;
     }
     button[kind="primary"]:hover {
-        box-shadow: 0 4px 12px rgba(255, 23, 68, 0.4) !important;
+        box-shadow: 0 6px 16px rgba(255, 23, 68, 0.6) !important;
     }
 
     /* Beautiful Metrics Cards (Top Bar) */
     div[data-testid="metric-container"] {
-        background: rgba(25, 25, 30, 0.6) !important;
-        border: 1px solid rgba(255,255,255,0.05) !important;
+        background: linear-gradient(135deg, rgba(30, 30, 35, 0.8), rgba(20, 20, 25, 0.6)) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
         border-radius: 12px !important;
-        padding: 1rem !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important;
-        backdrop-filter: blur(10px) !important;
+        padding: 1.2rem !important;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
+        backdrop-filter: blur(15px) !important;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    div[data-testid="metric-container"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 230, 118, 0.1) !important;
     }
     
     /* Metric Value Colors */
     div[data-testid="metric-container"] label {
-        color: #888888 !important;
-        font-weight: 500 !important;
-        font-size: 0.9rem !important;
+        color: #A0A0A0 !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
     div[data-testid="metric-container"] div[data-testid="stMetricValue"] {
         color: #00E676 !important; /* Neon Green Tint */
-        font-weight: 600 !important;
-        font-size: 2.2rem !important;
+        font-weight: 700 !important;
+        font-size: 2.4rem !important;
+        text-shadow: 0 2px 10px rgba(0, 230, 118, 0.3);
     }
 
     /* Prevent Streamlit from 'dimming' ANY stale components during auto-refreshes */
@@ -303,31 +312,36 @@ def render_dashboard_metrics():
         for sym in engine.symbols:
             metrics = engine.strategy.metrics.get(sym, {})
             price = metrics.get('last_price', 'N/A')
+            
+            # Smart money volume formatting
+            vol_spike = metrics.get('volume_spike', False)
+            vol_status = "🔥 SURGE" if vol_spike else "Ranging"
                 
             grid_data.append({
                 "Asset": sym,
                 "Price": f"${price:,.2f}" if isinstance(price, (float, int)) else price,
                 "RSI (15m)": str(round(metrics.get('rsi', 0.0), 2)) if metrics.get('rsi') else "N/A",
                 "MACD (15m)": metrics.get('tech_signal', 'WAITING'),
+                "Smart Volume": vol_status,
                 "Macro Trend (4H)": metrics.get('macro_trend', 'WAITING'),
-                "AI Sentiment": metrics.get('sentiment', 'WAITING'),
-                "Status": metrics.get('rejection_reason', 'Monitoring...')
+                "NLTK Sentiment": metrics.get('sentiment', 'WAITING'),
+                "Engine Status": metrics.get('rejection_reason', 'Monitoring...')
             })
         
         df_grid = pd.DataFrame(grid_data)
         
         # Native Pandas Styler for Conditional Formatting
         def highlight_sentiment(val):
-            if 'BULLISH' in str(val): return 'color: #00E676; font-weight: bold'
-            if 'BEARISH' in str(val): return 'color: #FF1744; font-weight: bold'
+            if 'BULLISH' in str(val): return 'color: #00E676; font-weight: bold; background-color: rgba(0, 230, 118, 0.1)'
+            if 'BEARISH' in str(val): return 'color: #FF1744; font-weight: bold; background-color: rgba(255, 23, 68, 0.1)'
             return 'color: #00BFFF'
 
         def highlight_rsi(val):
             if val == 'N/A': return 'color: #888888'
             try:
                 v = float(val)
-                if v >= 70: return 'color: #FF1744; font-weight: bold'
-                if v <= 30: return 'color: #00E676; font-weight: bold'
+                if v >= 70: return 'color: #FF1744; font-weight: bold; background-color: rgba(255, 23, 68, 0.1)'
+                if v <= 40: return 'color: #00E676; font-weight: bold; background-color: rgba(0, 230, 118, 0.1)'
             except: pass
             return 'color: #E0E0E0'
 
@@ -335,10 +349,15 @@ def render_dashboard_metrics():
             if val == 'BULLISH': return 'color: #00E676; font-weight: bold'
             if val == 'BEARISH': return 'color: #FF1744; font-weight: bold'
             return 'color: #E0E0E0'
+            
+        def highlight_volume(val):
+            if 'SURGE' in str(val): return 'color: #FF9100; font-weight: bold; text-shadow: 0 0 5px rgba(255, 145, 0, 0.5)'
+            return 'color: #888888'
 
         styled_df = df_grid.style.map(highlight_rsi, subset=['RSI (15m)']) \
-                                 .map(highlight_sentiment, subset=['AI Sentiment']) \
-                                 .map(highlight_trend, subset=['Macro Trend (4H)', 'MACD (15m)'])
+                                 .map(highlight_sentiment, subset=['NLTK Sentiment']) \
+                                 .map(highlight_trend, subset=['Macro Trend (4H)', 'MACD (15m)']) \
+                                 .map(highlight_volume, subset=['Smart Volume'])
 
         st.dataframe(styled_df, use_container_width=True, hide_index=True, height=350)
     else:

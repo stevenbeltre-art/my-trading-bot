@@ -1,6 +1,7 @@
 import pandas as pd
 import ta
-import google.generativeai as genai
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from alpaca.data.historical import NewsClient
 from alpaca.data.requests import NewsRequest
 from typing import Dict, Any
@@ -8,10 +9,13 @@ from typing import Dict, Any
 class StrategyEngine:
     def __init__(self, gemini_api_key: str, alpaca_api_key: str, alpaca_secret_key: str):
         self.gemini_api_key = gemini_api_key
-        # Configure Gemini 
-        genai.configure(api_key=self.gemini_api_key)
-        # Using the specified Gemini 1.5 Flash model
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Initialize NLTK VADER
+        try:
+            self.sia = SentimentIntensityAnalyzer()
+        except LookupError:
+            nltk.download('vader_lexicon', quiet=True)
+            self.sia = SentimentIntensityAnalyzer()
         
         # Alpaca News Client for Multi-Asset tracking
         self.news_client = NewsClient(alpaca_api_key, alpaca_secret_key)
@@ -29,6 +33,9 @@ class StrategyEngine:
         macd_15m = ta.trend.MACD(close=df_15m['close'], window_slow=26, window_fast=12, window_sign=9)
         df_15m['macd'] = macd_15m.macd()
         df_15m['macd_signal'] = macd_15m.macd_signal()
+        
+        # 20-period Volume SMA
+        df_15m['volume_sma'] = df_15m['volume'].rolling(window=20).mean()
         
         # VWAP Calculation
         vwap_indicator = ta.volume.VolumeWeightedAveragePrice(
@@ -52,7 +59,11 @@ class StrategyEngine:
         macd_signal = latest_15m.get('macd_signal', 0)
         vwap_val = latest_15m.get('vwap', 0)
         close_price = latest_15m.get('close', 0)
+        volume_current = latest_15m.get('volume', 0)
+        volume_sma = latest_15m.get('volume_sma', 0)
         macro_hist = latest_4h.get('macd_hist', 0)
+
+        volume_spike = volume_current > (1.5 * volume_sma) if volume_sma > 0 else False
 
         # Macro Trend logic: Positive Histogram = Bullish Macro
         macro_trend = "BULLISH" if macro_hist > 0 else "BEARISH"
@@ -77,7 +88,8 @@ class StrategyEngine:
             "macd": macd_val,
             "vwap": vwap_val,
             "signal": tech_signal,
-            "macro": macro_trend
+            "macro": macro_trend,
+            "volume_spike": volume_spike
         }
 
     def fetch_recent_news(self, symbol: str) -> str:
@@ -106,38 +118,30 @@ class StrategyEngine:
 
     def analyze_sentiment(self, headlines: str) -> str:
         """
-        Queries Gemini Flash with a strict prompt to analyze news sentiment.
+        Calculates mathematical sentiment using NLTK VADER on the aggregate headlines.
         """
         if "No recent news" in headlines:
             return "NEUTRAL"
             
-        prompt = f"""
-        You are a highly advanced Wall Street quantitative trading AI.
-        Analyze the following top 5 recent news headlines for cryptocurrency.
-        Determine the overall sentiment as it relates to the crypto market.
-        
-        Follow these strict instructions:
-        Respond with exactly ONE WORD from the following list:
-        BULLISH
-        BEARISH
-        NEUTRAL
-        
-        Headlines:
-        {headlines}
-        """
         try:
-            response = self.model.generate_content(prompt)
-            # Clean the output to ensure it's just the single word
-            result = response.text.strip().upper()
+            # We split the string block of headlines back into individual headlines for evaluation
+            lines = headlines.split('\n')
+            total_score = 0
+            for line in lines:
+                scores = self.sia.polarity_scores(line)
+                total_score += scores['compound']
+                
+            avg_score = total_score / len(lines) if lines else 0
             
-            # Fallback if Gemini is too verbose
-            if "BULLISH" in result:
+            # VADER compound score ranges from -1 (most negative) to 1 (most positive)
+            if avg_score >= 0.2:
                 return "BULLISH"
-            elif "BEARISH" in result:
+            elif avg_score <= -0.5: # We aggressively block extremely negative news
                 return "BEARISH"
-            return "NEUTRAL"
+            else:
+                return "NEUTRAL"
         except Exception as e:
-            print(f"Error calling Gemini API: {e}")
+            print(f"Error calculating NLTK sentiment: {e}")
             return "ERROR"
 
     def determine_trade_action(self, ohlcv_15m: list, ohlcv_4h: list, symbol: str) -> str:
@@ -147,6 +151,7 @@ class StrategyEngine:
         tech_analysis = self.analyze_technicals(ohlcv_15m, ohlcv_4h, symbol)
         tech_signal = tech_analysis.get('signal', 'NEUTRAL')
         macro_trend = tech_analysis.get('macro', 'NEUTRAL')
+        volume_spike = tech_analysis.get('volume_spike', False)
         
         if symbol not in self.metrics:
             self.metrics[symbol] = {}
@@ -154,6 +159,11 @@ class StrategyEngine:
         self.metrics[symbol]['rejection_reason'] = "Monitoring..."
             
         if tech_signal == "BULLISH":
+            # 0. Smart Money Volume Filter
+            if not volume_spike:
+                self.metrics[symbol]['rejection_reason'] = "Blocked: Low Institutional Volume"
+                return "HOLD"
+
             # 2. Sentiment Directional Filter
             headlines = self.fetch_recent_news(symbol)
             sentiment_signal = self.analyze_sentiment(headlines)
@@ -166,7 +176,13 @@ class StrategyEngine:
                 
             # If we pass all filters
             self.metrics[symbol]['rejection_reason'] = "Signal Approved"
+            return "BUY"
         elif tech_signal == "BEARISH":
+            # 0. Smart Money Volume Filter
+            if not volume_spike:
+                self.metrics[symbol]['rejection_reason'] = "Blocked: Low Institutional Volume"
+                return "HOLD"
+                
             # 2. Sentiment Directional Filter
             headlines = self.fetch_recent_news(symbol)
             sentiment_signal = self.analyze_sentiment(headlines)

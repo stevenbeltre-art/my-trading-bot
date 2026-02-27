@@ -153,6 +153,14 @@ class TradingEngine:
                                         # Update UI matrix with live PnL
                                         self.strategy.metrics[symbol]['live_pnl'] = unrealized_pl
                                         
+                                        # Track Highest PnL for The Squeeze
+                                        if 'highest_pnl' not in self.open_positions[symbol]:
+                                            self.open_positions[symbol]['highest_pnl'] = unrealized_pl
+                                        else:
+                                            self.open_positions[symbol]['highest_pnl'] = max(self.open_positions[symbol]['highest_pnl'], unrealized_pl)
+                                            
+                                        highest_pnl = self.open_positions[symbol]['highest_pnl']
+                                        
                                         if unrealized_pl >= 5000.0:
                                             self.db.log_message("SUCCESS", f"{symbol} hit $5,000 Profit Target! Liquidating position natively.")
                                             qty_to_close = float(position_data.qty)
@@ -165,6 +173,19 @@ class TradingEngine:
                                                 self.open_positions[symbol] = None
                                             except Exception as e:
                                                 self.db.log_message("ERROR", f"Failed to liquidate {symbol} crossing $5k: {e}")
+                                                
+                                        elif highest_pnl >= 3000.0 and unrealized_pl <= highest_pnl - 500.0:
+                                            self.db.log_message("SUCCESS", f"{symbol} hit The Squeeze at ${highest_pnl:.2f} peak! Liquidating instantly to protect $3k floor.")
+                                            qty_to_close = float(position_data.qty)
+                                            side_to_close = "sell" if position_data.side == "long" else "buy"
+                                            # Close natively
+                                            try:
+                                                self.exchange.create_market_order(symbol, qty_to_close, side_to_close)
+                                                self.db.update_trade_pnl(self.open_positions[symbol]['id'], unrealized_pl, "PROFIT_TAKEN_SQUEEZE")
+                                                self.open_positions[symbol] = None
+                                            except Exception as e:
+                                                self.db.log_message("ERROR", f"Failed to liquidate Squeeze {symbol}: {e}")
+                                                
                                 except Exception as e:
                                     self.db.log_message("WARNING", f"Error monitoring PnL for {symbol}: {e}")
                                 
