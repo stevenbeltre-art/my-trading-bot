@@ -159,11 +159,12 @@ with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #00E676;'>⚡ ELITE QUANT</h1>", unsafe_allow_html=True)
     st.markdown("---")
     
-    st.write(f"**Tracking Universe**: {len(engine.symbols)} Assets")
+    all_tracked = engine.market_hours_symbols + [sym for sym in engine.after_hours_symbols if sym not in engine.market_hours_symbols]
+    st.write(f"**Tracking Universe**: {len(all_tracked)} Total Assets")
     st.write(f"**Exchange Route**: Alpaca (Paper)")
     
     st.markdown("<br>", unsafe_allow_html=True)
-    view_symbol = st.selectbox("🎯 Target Component", ["ALL"] + engine.symbols)
+    view_symbol = st.selectbox("🎯 Target Component", ["ALL"] + all_tracked)
     
     st.markdown("<br><br>", unsafe_allow_html=True)
     

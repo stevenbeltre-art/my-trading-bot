@@ -40,7 +40,8 @@ class TradingEngine:
         # After-Hours Universe (Crypto Only)
         self.after_hours_symbols = [
             "BTC/USD", "ETH/USD", "SOL/USD", 
-            "DOGE/USD", "AVAX/USD", "LINK/USD", "MATIC/USD"
+            "DOGE/USD", "AVAX/USD", "LINK/USD", "MATIC/USD",
+            "BCH/USD", "LTC/USD"
         ]
         
         # Default start state
