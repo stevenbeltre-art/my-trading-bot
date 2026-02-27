@@ -2,6 +2,8 @@ import time
 import threading
 from dotenv import load_dotenv
 import os
+import datetime
+import pytz
 
 from bot.exchange import ExchangeInterface
 from bot.strategy import StrategyEngine
@@ -29,11 +31,20 @@ class TradingEngine:
             self.db.log_message("ERROR", f"Failed to initialize components: {e}")
             raise
 
-        # High-Volume Universe
-        self.symbols = [
-            "BTC/USD", "ETH/USD", "SOL/USD", # Crypto
+        # High-Volume Universe (Market Hours)
+        self.market_hours_symbols = [
+            "BTC/USD", "ETH/USD", "SOL/USD", # Core Crypto
             "SPY", "QQQ", "AAPL", "TSLA", "MSFT", "NVDA" # Equities
         ]
+        
+        # After-Hours Universe (Crypto Only)
+        self.after_hours_symbols = [
+            "BTC/USD", "ETH/USD", "SOL/USD", 
+            "DOGE/USD", "AVAX/USD", "LINK/USD", "MATIC/USD"
+        ]
+        
+        # Default start state
+        self.symbols = self.market_hours_symbols
         
         self.db.log_message("INFO", f"High-Volume Universe Loaded: {len(self.symbols)} markets.")
 
@@ -75,20 +86,49 @@ class TradingEngine:
         self.db.log_message("ERROR", f"Failed to fetch OHLCV for {symbol} after {max_retries} attempts.")
         return []
 
-    def _get_market_status(self) -> bool:
-        """Determines if the US Equity Market is currently open."""
-        try:
-            clock = self.exchange.trading_client.get_clock()
-            return clock.is_open
-        except Exception:
-            return False # Fail safe
+    def _get_market_status(self):
+        """Checks if the US Equity Market is currently open (9:30 AM to 4:00 PM EST, Mon-Fri)."""
+        
+        eastern = pytz.timezone('US/Eastern')
+        now = datetime.datetime.now(eastern)
+        
+        # Check if it's a weekday (0=Monday, 6=Sunday)
+        if now.weekday() >= 5:
+            return False
+            
+        market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+        market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        
+        return market_open <= now <= market_close
 
     def _run_loop(self):
         """The core continuous trading loop, handling rate limits and sleeping."""
         print("[ENGINE DEBUG] _run_loop thread successfully started!", flush=True)
         self.db.log_message("INFO", "Engine loop successfully entered.")
+        
+        last_market_state = None
+        
         while self.is_running:
             try:
+                # 0. Dynamic Asset Surveillance Routing
+                market_is_open = self._get_market_status()
+                
+                # Check for Market State Transition (Open -> Close or Close -> Open)
+                if last_market_state is None or market_is_open != last_market_state:
+                    if market_is_open:
+                        self.db.log_message("INFO", "Market Hours Detected (9:30 AM EST). Activating Full Equity Pipeline.")
+                        self.symbols = self.market_hours_symbols
+                    else:
+                        self.db.log_message("INFO", "After-Hours Detected (4:00 PM EST). Routing all surveillance to Global Crypto Markets.")
+                        self.symbols = self.after_hours_symbols
+                        
+                    # Rebuild the open positions tracking map to ensure no key errors
+                    for sym in self.symbols:
+                        if sym not in self.open_positions:
+                            self.open_positions[sym] = None
+                            
+                    last_market_state = market_is_open
+            
                 # Pre-fetch balance once per main loop iteration
                 self.db.log_message("DEBUG", "Fetching balance...")
                 balance_info = self.exchange.fetch_balance()
@@ -99,17 +139,16 @@ class TradingEngine:
                 
                 self.db.log_message("DEBUG", "Balance and Positions fetched.")
                 
-                market_is_open = self._get_market_status()
-                
                 for symbol in self.symbols:
                     if not self.is_running:
                          break # Exit inner loop if killed
                     
                     is_crypto = self.exchange._is_crypto(symbol)
                     
-                    # 0. Market Hours Guard
+                    # 1. Market Hours Guard
+                    # (Though the universe swapped, we still hard-block stray non-crypto during closed hours as a safety net)
                     if not is_crypto and not market_is_open:
-                        self.db.log_message("DEBUG", f"{symbol}: Skipped. US Equity Market is Closed.")
+                        # self.db.log_message("DEBUG", f"{symbol}: Skipped. US Equity Market is Closed.")
                         continue
                         
                     try:
