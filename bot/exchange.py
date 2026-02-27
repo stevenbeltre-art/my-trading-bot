@@ -146,10 +146,17 @@ class ExchangeInterface:
                 )
                 entry_order = self.trading_client.submit_order(order_data=market_order_data)
                 
+                # Alpaca does not support Trailing Stops on Crypto.
+                if self._is_crypto(symbol):
+                    return {
+                        'id': str(entry_order.id),
+                        'cost': float(entry_order.notional) if entry_order.notional else (float(entry_order.qty) * float(entry_order.filled_avg_price) if entry_order.filled_avg_price else None)
+                    }
+                
                 # 2. Prevent race conditions by giving Alpaca a moment to log the position filling
                 time.sleep(1)
                 
-                # 3. Submit Trailing Stop Exit
+                # 3. Submit Trailing Stop Exit (Equities Only)
                 trailing_stop_data = TrailingStopOrderRequest(
                     symbol=symbol,
                     qty=amount,
@@ -170,6 +177,9 @@ class ExchangeInterface:
         """Execute a market sell (short) order immediately followed by a Trailing Stop Buy via Alpaca-py."""
         with self.lock:
             try:
+                if self._is_crypto(symbol):
+                    raise Exception("Alpaca does not support Shorting Cryptocurrencies. Strategy should block this.")
+                    
                 # 1. Submit Market Entry
                 market_order_data = MarketOrderRequest(
                     symbol=symbol,

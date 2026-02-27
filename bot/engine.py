@@ -185,9 +185,9 @@ class TradingEngine:
                                 self.db.update_trade_pnl(self.open_positions[symbol]['id'], 0, "CLOSED_NATIVELY")
                                 self.open_positions[symbol] = None
                             else:
-                                # Monitor for $5,000 Hard Take Profit
+                                # Monitor PnL and perform manual Stop Loss for Crypto
                                 try:
-                                    position_data = next((p for p in active_positions if p.symbol == alpaca_symbol), None)
+                                    position_data = next((p for p in active_positions_raw if p.symbol == alpaca_symbol), None)
                                     if position_data:
                                         unrealized_pl = float(position_data.unrealized_pl)
                                         # Update UI matrix with live PnL
@@ -225,6 +225,29 @@ class TradingEngine:
                                                 self.open_positions[symbol] = None
                                             except Exception as e:
                                                 self.db.log_message("ERROR", f"Failed to liquidate Squeeze {symbol}: {e}")
+                                                
+                                        elif is_crypto and 'trail_price' in self.open_positions[symbol]:
+                                            # Manual ATR Trailing Stop execution for Crypto (Alpaca doesn't support Trailing on crypto)
+                                            trail_price = self.open_positions[symbol]['trail_price']
+                                            side = self.open_positions[symbol].get('side', 'buy')
+                                            
+                                            # For crypto, it's always a long position right now ('buy')
+                                            if side == 'buy' and current_price <= trail_price:
+                                                self.db.log_message("INFO", f"{symbol} hit manual engine Trailing Stop at ${trail_price:.2f}. Liquidating.")
+                                                qty_to_close = float(position_data.qty)
+                                                try:
+                                                    self.exchange.create_market_order(symbol, qty_to_close, "sell")
+                                                    self.db.update_trade_pnl(self.open_positions[symbol]['id'], unrealized_pl, "STOP_LOSS_HIT")
+                                                    self.open_positions[symbol] = None
+                                                except Exception as e:
+                                                    self.db.log_message("ERROR", f"Failed to execute manual Trailing Stop for {symbol}: {e}")
+                                                
+                                            # Update the trailing stop mathematically if price rises
+                                            if self.open_positions[symbol] is not None and current_price > self.open_positions[symbol].get('highest_price', current_price):
+                                                self.open_positions[symbol]['highest_price'] = current_price
+                                                trail_dist = self.open_positions[symbol].get('trail_dist')
+                                                if trail_dist:
+                                                    self.open_positions[symbol]['trail_price'] = current_price - trail_dist
                                                 
                                 except Exception as e:
                                     self.db.log_message("WARNING", f"Error monitoring PnL for {symbol}: {e}")
@@ -270,7 +293,11 @@ class TradingEngine:
                                     self.open_positions[symbol] = {
                                         "id": trade_id,
                                         "entry_price": current_price,
-                                        "amount": amount
+                                        "amount": amount,
+                                        "trail_price": trail_price,
+                                        "side": action.lower(),
+                                        "highest_price": current_price,
+                                        "trail_dist": current_price - trail_price if action == "BUY" else trail_price - current_price
                                     }
                                 
                     except Exception as e:
