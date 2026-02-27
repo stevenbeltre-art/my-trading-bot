@@ -313,6 +313,10 @@ def render_dashboard_metrics():
             metrics = engine.strategy.metrics.get(sym, {})
             price = metrics.get('last_price', 'N/A')
             
+            # Skip assets that haven't been evaluated yet or are market-closed N/A ghosts
+            if price == 'N/A':
+                continue
+            
             # Smart money volume formatting
             vol_spike = metrics.get('volume_spike', False)
             vol_status = "🔥 SURGE" if vol_spike else "Ranging"
@@ -328,38 +332,41 @@ def render_dashboard_metrics():
                 "Engine Status": metrics.get('rejection_reason', 'Monitoring...')
             })
         
-        df_grid = pd.DataFrame(grid_data)
-        
-        # Native Pandas Styler for Conditional Formatting
-        def highlight_sentiment(val):
-            if 'BULLISH' in str(val): return 'color: #00E676; font-weight: bold; background-color: rgba(0, 230, 118, 0.1)'
-            if 'BEARISH' in str(val): return 'color: #FF1744; font-weight: bold; background-color: rgba(255, 23, 68, 0.1)'
-            return 'color: #00BFFF'
-
-        def highlight_rsi(val):
-            if val == 'N/A': return 'color: #888888'
-            try:
-                v = float(val)
-                if v >= 70: return 'color: #FF1744; font-weight: bold; background-color: rgba(255, 23, 68, 0.1)'
-                if v <= 40: return 'color: #00E676; font-weight: bold; background-color: rgba(0, 230, 118, 0.1)'
-            except: pass
-            return 'color: #E0E0E0'
-
-        def highlight_trend(val):
-            if val == 'BULLISH': return 'color: #00E676; font-weight: bold'
-            if val == 'BEARISH': return 'color: #FF1744; font-weight: bold'
-            return 'color: #E0E0E0'
+        if grid_data:
+            df_grid = pd.DataFrame(grid_data)
             
-        def highlight_volume(val):
-            if 'SURGE' in str(val): return 'color: #FF9100; font-weight: bold; text-shadow: 0 0 5px rgba(255, 145, 0, 0.5)'
-            return 'color: #888888'
+            # Native Pandas Styler for Conditional Formatting
+            def highlight_sentiment(val):
+                if 'BULLISH' in str(val): return 'color: #00E676; font-weight: bold; background-color: rgba(0, 230, 118, 0.1)'
+                if 'BEARISH' in str(val): return 'color: #FF1744; font-weight: bold; background-color: rgba(255, 23, 68, 0.1)'
+                return 'color: #00BFFF'
 
-        styled_df = df_grid.style.map(highlight_rsi, subset=['RSI (15m)']) \
-                                 .map(highlight_sentiment, subset=['NLTK Sentiment']) \
-                                 .map(highlight_trend, subset=['Macro Trend (4H)', 'MACD (15m)']) \
-                                 .map(highlight_volume, subset=['Smart Volume'])
+            def highlight_rsi(val):
+                if val == 'N/A': return 'color: #888888'
+                try:
+                    v = float(val)
+                    if v >= 70: return 'color: #FF1744; font-weight: bold; background-color: rgba(255, 23, 68, 0.1)'
+                    if v <= 40: return 'color: #00E676; font-weight: bold; background-color: rgba(0, 230, 118, 0.1)'
+                except: pass
+                return 'color: #E0E0E0'
 
-        st.dataframe(styled_df, use_container_width=True, hide_index=True, height=350)
+            def highlight_trend(val):
+                if val == 'BULLISH': return 'color: #00E676; font-weight: bold'
+                if val == 'BEARISH': return 'color: #FF1744; font-weight: bold'
+                return 'color: #E0E0E0'
+                
+            def highlight_volume(val):
+                if 'SURGE' in str(val): return 'color: #FF9100; font-weight: bold; text-shadow: 0 0 5px rgba(255, 145, 0, 0.5)'
+                return 'color: #888888'
+
+            styled_df = df_grid.style.map(highlight_rsi, subset=['RSI (15m)']) \
+                                     .map(highlight_sentiment, subset=['NLTK Sentiment']) \
+                                     .map(highlight_trend, subset=['Macro Trend (4H)', 'MACD (15m)']) \
+                                     .map(highlight_volume, subset=['Smart Volume'])
+
+            st.dataframe(styled_df, use_container_width=True, hide_index=True, height=350)
+        else:
+            st.info("Terminal syncing market data... Matrix will populate shortly.")
     else:
         st.info("Terminal standing by. Click 'START ENGINE' to populate matrix.")
 
